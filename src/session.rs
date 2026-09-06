@@ -22,7 +22,7 @@ const NEW_EVERY: usize = 5;
 pub struct Options {
     pub mode: Mode,
     pub minutes: u32,
-    /// No time budget; the queue already holds everything.
+    /// No time budget; when the queue empties, start another round.
     pub endless: bool,
     /// Deck label for the header.
     pub label: String,
@@ -152,13 +152,28 @@ impl Queue {
             self.relearn.remove(pos);
         }
     }
+
+    fn withdraw_all(&mut self, item: &Item) {
+        self.due.retain(|i| !same(i, item));
+        self.new.retain(|i| !same(i, item));
+        self.withdraw(item);
+    }
+
+    /// A new endless round: learned cards by retrievability, leftovers as new.
+    fn refill(&mut self, due: Vec<Item>, new: Vec<Item>) {
+        self.due = due.into();
+        self.new = new.into();
+        self.relearn.clear();
+        self.new_limit = self.new.len();
+        self.new_taken = 0;
+        self.since_new = 0;
+    }
 }
 
 struct Done {
     item: Item,
     origin: Origin,
     stage: Stage,
-    requeued: bool,
     counters: Counters,
     graded: Option<Grade>,
 }
@@ -174,6 +189,8 @@ struct Session<'a> {
     endless: bool,
     multi: bool,
     queue: Queue,
+    /// Every card this session can loop over (`--endless` re-queues these).
+    pool: Vec<Item>,
     start: Instant,
     budget: Duration,
     done: Vec<Done>,
@@ -210,6 +227,7 @@ pub fn run(
     if opts.mode == Mode::Typed {
         notes.push("enter checks · empty line reveals".into());
     }
+    let pool: Vec<Item> = plan.due.iter().chain(plan.new.iter()).cloned().collect();
     let queue = Queue {
         due: plan.due.into(),
         new: plan.new.into(),
@@ -231,6 +249,7 @@ pub fn run(
         endless: opts.endless,
         multi: decks.len() > 1,
         queue,
+        pool,
         start: Instant::now(),
         budget: Duration::from_secs(u64::from(opts.minutes) * 60),
         done: Vec::new(),
@@ -251,6 +270,10 @@ pub fn run(
                 }
                 match s.queue.pick() {
                     Some((item, origin)) => (item, origin, Stage::Fresh),
+                    None if s.endless && s.refill() => match s.queue.pick() {
+                        Some((item, origin)) => (item, origin, Stage::Fresh),
+                        None => break,
+                    },
                     None => break,
                 }
             }
@@ -269,8 +292,7 @@ pub fn run(
                 stage,
             } => {
                 s.record(&item, grade, elapsed_ms, answer, overridden)?;
-                let requeued = grade == Grade::Again;
-                if requeued {
+                if grade == Grade::Again {
                     s.queue.requeue(item.clone());
                 }
                 if origin == Origin::New {
@@ -281,7 +303,6 @@ pub fn run(
                     item,
                     origin,
                     stage,
-                    requeued,
                     counters,
                     graded: Some(grade),
                 });
@@ -293,7 +314,6 @@ pub fn run(
                     item,
                     origin,
                     stage: Stage::Fresh,
-                    requeued: false,
                     counters,
                     graded: None,
                 });
@@ -308,9 +328,7 @@ pub fn run(
                 let d = s.done.pop().expect("undo only offered with history");
                 s.undo(&d)?;
                 s.queue.push_front(item, origin);
-                if d.requeued {
-                    s.queue.withdraw(&d.item);
-                }
+                s.queue.withdraw_all(&d.item);
                 if d.origin == Origin::New && d.graded.is_some() {
                     s.summary.new_seen -= 1;
                 }
@@ -791,6 +809,27 @@ impl Session<'_> {
         );
     }
 
+    /// Re-queue the session's cards, weakest first, so `--endless` can loop.
+    fn refill(&mut self) -> bool {
+        if self.pool.is_empty() {
+            return false;
+        }
+        let today = self.clock.today();
+        let mut due = Vec::new();
+        let mut new = Vec::new();
+        for item in &self.pool {
+            match self.model.memory(&self.events(item), self.clock) {
+                Some(m) => due.push((item.clone(), self.model.retrievability(&m, today))),
+                None => new.push(item.clone()),
+            }
+        }
+        due.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        self.queue
+            .refill(due.into_iter().map(|(item, _)| item).collect(), new);
+        self.ticker = self.term.out.dim("another round");
+        true
+    }
+
     fn time_up(&mut self) -> Result<bool> {
         if self.endless || self.start.elapsed() < self.budget {
             return Ok(false);
@@ -940,5 +979,26 @@ mod tests {
         q.restore(before);
         assert_eq!(q.remaining(), 4);
         assert_eq!(drain(&mut q), vec![0, 1, 2, 100]);
+    }
+
+    #[test]
+    fn refill_replays_the_pool() {
+        let mut q = queue(2, 1, 1);
+        assert_eq!(drain(&mut q), vec![0, 1, 100]);
+        assert_eq!(q.remaining(), 0);
+        q.refill(vec![item(1), item(0)], vec![item(100)]);
+        assert_eq!(q.remaining(), 3);
+        assert_eq!(drain(&mut q), vec![1, 0, 100]);
+    }
+
+    #[test]
+    fn withdraw_all_clears_every_bucket() {
+        let mut q = queue(2, 1, 1);
+        let (first, o) = q.pick().unwrap();
+        q.account(o);
+        q.requeue(first.clone());
+        q.due.push_back(first.clone());
+        q.withdraw_all(&first);
+        assert_eq!(drain(&mut q), vec![1, 100]);
     }
 }

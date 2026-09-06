@@ -119,9 +119,9 @@ not. What is left simply stays due.
 `--endless` is for the days you want to keep going. No time limit, no daily
 cap on new cards, and once nothing is due it moves on to the learned cards
 closest to being forgotten, most at risk first, with new cards still mixed
-in one per five. It stops when you quit or when it has shown you
-everything. Scheduling is unaffected: an early review is just a review with
-a shorter gap.
+in one per five. When that queue empties it starts another round, again
+weakest first, until you quit. Scheduling is unaffected: an early review
+is just a review with a shorter gap.
 
 ## Scheduling
 

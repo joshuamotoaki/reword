@@ -166,33 +166,33 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     } else {
         format!(" {}", names.join(" "))
     };
-    if summary.remaining > 0 {
-        out::println(&format!(
-            "{} remain. Next: {}",
-            plural(summary.remaining, "card"),
-            style.bold(&format!("reword review{deck_arg}"))
-        ));
-    } else if new_waiting > 0 {
-        out::println(&format!(
-            "All caught up. {} waiting: {}",
-            if new_waiting == 1 {
-                "1 new card is".to_string()
-            } else {
-                format!("{new_waiting} new cards are")
-            },
-            style.bold(&format!("reword review{deck_arg} --new 5"))
-        ));
-    } else if let Some((day, n)) = next_due {
-        out::println(&format!(
-            "All caught up. {} {}. {} keeps going.",
-            cards_come_due(n),
-            in_days_label(days_between(today, day)),
-            style.bold(&format!("reword review{deck_arg} --endless"))
-        ));
-    } else if args.endless {
-        out::println("That was everything.");
-    } else {
-        out::println("All caught up.");
+    if !args.endless {
+        if summary.remaining > 0 {
+            out::println(&format!(
+                "{} remain. Next: {}",
+                plural(summary.remaining, "card"),
+                style.bold(&format!("reword review{deck_arg}"))
+            ));
+        } else if new_waiting > 0 {
+            out::println(&format!(
+                "All caught up. {} waiting: {}",
+                if new_waiting == 1 {
+                    "1 new card is".to_string()
+                } else {
+                    format!("{new_waiting} new cards are")
+                },
+                style.bold(&format!("reword review{deck_arg} --new 5"))
+            ));
+        } else if let Some((day, n)) = next_due {
+            out::println(&format!(
+                "All caught up. {} {}. {} keeps going.",
+                cards_come_due(n),
+                in_days_label(days_between(today, day)),
+                style.bold(&format!("reword review{deck_arg} --endless"))
+            ));
+        } else {
+            out::println("All caught up.");
+        }
     }
     Ok(0)
 }

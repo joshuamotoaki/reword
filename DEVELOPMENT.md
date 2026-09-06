@@ -105,7 +105,9 @@ src/
   set: not-yet-due learned cards join the due list, all sorted by
   retrievability, so due cards still come first and the rest follow in
   most-at-risk order. New intake is uncapped but still paced one per five.
-  The session has no budget; it ends when the queue is empty or on `q`.
+  The session has no budget. When the queue empties, the same cards are
+  re-queued by current retrievability (unlearned leftovers as new) and
+  the loop continues until `q`.
 - **Typed answers** are read as a cooked line so IME composition works. Raw
   mode is only for single-key prompts.
 - **The review screen** redraws a whole frame per state on the alternate
