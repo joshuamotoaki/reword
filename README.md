@@ -108,9 +108,9 @@ lost: every grade is written to the log the moment you press the key, and
 undo is written as its own row.
 
 A session takes over the terminal, like `less`: each card is drawn in the
-same place, the line under the header says what happened to the previous
-card, and the keys you can press are always on the bottom row. When the
-session ends the terminal comes back as it was, with a one-line summary.
+same place, and the keys you can press are always on the bottom row. When
+the session ends the terminal comes back as it was, with a one-line
+summary.
 
 Sessions are bounded by time, not by a due count. `-m 5` gives you five
 minutes; when they are up you get a summary and one question, continue or

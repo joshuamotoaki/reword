@@ -4,7 +4,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-use crate::clock::{Clock, interval_label};
+use crate::clock::Clock;
 use crate::error::Result;
 use crate::history::{ReviewEvent, Row, RowKind};
 use crate::memory::Model;
@@ -26,8 +26,6 @@ pub struct Options {
     pub endless: bool,
     /// Deck label for the header.
     pub label: String,
-    /// One-line notes for the ticker at session start.
-    pub notes: Vec<String>,
 }
 
 #[derive(Default, Debug)]
@@ -197,8 +195,6 @@ struct Session<'a> {
     session_events: HashMap<(usize, String, Goal), Vec<ReviewEvent>>,
     summary: Summary,
     label: String,
-    /// What happened to the previous card, shown under the header.
-    ticker: String,
     screen: term::Screen,
 }
 
@@ -214,19 +210,6 @@ pub fn run(
     term: &Term,
     opts: Options,
 ) -> Result<Summary> {
-    let mut notes = vec![{
-        let noun = if opts.endless { "learned" } else { "due" };
-        let mut parts = vec![format!("{} {noun}", plan.due.len())];
-        let new = plan.new_limit.min(plan.new.len());
-        if new > 0 {
-            parts.push(format!("{new} new"));
-        }
-        parts.join(", ")
-    }];
-    notes.extend(opts.notes);
-    if opts.mode == Mode::Typed {
-        notes.push("enter checks · empty line reveals".into());
-    }
     let pool: Vec<Item> = plan.due.iter().chain(plan.new.iter()).cloned().collect();
     let queue = Queue {
         due: plan.due.into(),
@@ -256,7 +239,6 @@ pub fn run(
         session_events: HashMap::new(),
         summary: Summary::default(),
         label: opts.label,
-        ticker: term.out.dim(&notes.join(" · ")),
         screen,
     };
 
@@ -298,7 +280,6 @@ pub fn run(
                 if origin == Origin::New {
                     s.summary.new_seen += 1;
                 }
-                s.set_result(&item, grade);
                 s.done.push(Done {
                     item,
                     origin,
@@ -309,7 +290,6 @@ pub fn run(
             }
             Step::Skipped => {
                 s.skip(&item, elapsed_ms)?;
-                s.set_skip(&item);
                 s.done.push(Done {
                     item,
                     origin,
@@ -333,7 +313,6 @@ pub fn run(
                     s.summary.new_seen -= 1;
                 }
                 s.queue.restore(d.counters);
-                s.ticker = term.out.dim("↶ undo");
                 pending = Some((d.item, d.origin, d.stage));
             }
         }
@@ -368,7 +347,6 @@ impl Session<'_> {
             &term::Frame {
                 left: format!("{} · {}", self.label, self.mode),
                 right: self.progress(),
-                ticker: &self.ticker,
                 body,
                 footer,
                 cursor_at,
@@ -781,34 +759,6 @@ impl Session<'_> {
         format!("{done}/{total} · {time}")
     }
 
-    fn set_result(&mut self, item: &Item, grade: Grade) {
-        let label = if grade == Grade::Again {
-            "again soon".to_string()
-        } else {
-            let evs = self.events(item);
-            self.model
-                .memory(&evs, self.clock)
-                .map(|m| interval_label(self.model.scheduled_days(&m) as f32))
-                .unwrap_or_default()
-        };
-        let sym = if grade.is_success() {
-            self.term.out.green("✓")
-        } else {
-            self.term.out.red("✗")
-        };
-        let name = text::truncate(self.card(item).prompt(item.goal), 24);
-        self.ticker = format!("{sym} {}", self.term.out.dim(&format!("{name} · {label}")));
-    }
-
-    fn set_skip(&mut self, item: &Item) {
-        let name = text::truncate(self.card(item).prompt(item.goal), 24);
-        self.ticker = format!(
-            "{} {}",
-            self.term.out.yellow("→"),
-            self.term.out.dim(&format!("{name} · skipped"))
-        );
-    }
-
     /// Re-queue the session's cards, weakest first, so `--endless` can loop.
     fn refill(&mut self) -> bool {
         if self.pool.is_empty() {
@@ -826,7 +776,6 @@ impl Session<'_> {
         due.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         self.queue
             .refill(due.into_iter().map(|(item, _)| item).collect(), new);
-        self.ticker = self.term.out.dim("another round");
         true
     }
 

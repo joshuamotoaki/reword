@@ -76,7 +76,8 @@ pub fn ago(then: Timestamp, now: Timestamp) -> String {
     }
 }
 
-/// Compact interval label for the post-grade line: "<1d", "3d", "2mo", "1.5y".
+/// Compact interval label: "<1d", "3d", "2mo", "1.5y".
+#[cfg(test)]
 pub fn interval_label(days: f32) -> String {
     if days < 1.0 {
         "<1d".into()
@@ -89,6 +90,7 @@ pub fn interval_label(days: f32) -> String {
     }
 }
 
+#[cfg(test)]
 fn trim_float(v: f32, unit: &str) -> String {
     let s = format!("{v:.1}");
     let s = s.strip_suffix(".0").unwrap_or(&s);

@@ -132,17 +132,6 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     };
 
     let style = ctx.term.out;
-    let mut notes = Vec::new();
-    if plan.throttled {
-        notes.push(format!("new cards paused: {} overdue", plan.due.len()));
-    }
-    if plan.deferred_siblings > 0 {
-        notes.push(format!(
-            "{} held for a later session (its other side is in this one)",
-            plural(plan.deferred_siblings, "reverse card")
-        ));
-    }
-
     let new_waiting = plan.new_waiting();
     let next_due = plan.next_due;
     let summary = session::run(
@@ -157,7 +146,6 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
             minutes,
             endless: args.endless,
             label,
-            notes,
         },
     )?;
 

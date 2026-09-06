@@ -29,8 +29,6 @@ pub struct Plan {
     pub throttled: bool,
     /// Earliest future due day and how many cards come due that day.
     pub next_due: Option<(Date, usize)>,
-    /// Siblings held back because the other side is in this session.
-    pub deferred_siblings: usize,
     pub total_goals: usize,
     pub learned: usize,
 }
@@ -104,7 +102,6 @@ pub fn plan(
     let mut due = Vec::new();
     let mut new = Vec::new();
     let mut next_due: Option<(Date, usize)> = None;
-    let mut deferred = 0;
     let mut total_goals = 0;
     let mut learned = 0;
 
@@ -156,24 +153,21 @@ pub fn plan(
             };
 
             // Never both sides of one line in a session: keep the more urgent.
-            let (keep, defer) = match (forward, reverse) {
+            let keep = match (forward, reverse) {
                 (Some(f), Some(r)) => match (&f, &r) {
                     (Candidate::Due(a), Candidate::Due(b)) => {
                         if a.retrievability <= b.retrievability {
-                            (Some(f), Some(r))
+                            Some(f)
                         } else {
-                            (Some(r), Some(f))
+                            Some(r)
                         }
                     }
-                    (Candidate::Due(_), Candidate::New(_)) => (Some(f), Some(r)),
-                    (Candidate::New(_), Candidate::Due(_)) => (Some(r), Some(f)),
-                    (Candidate::New(_), Candidate::New(_)) => (Some(f), Some(r)),
+                    (Candidate::Due(_), Candidate::New(_)) => Some(f),
+                    (Candidate::New(_), Candidate::Due(_)) => Some(r),
+                    (Candidate::New(_), Candidate::New(_)) => Some(f),
                 },
-                (f, r) => (f.or(r), None),
+                (f, r) => f.or(r),
             };
-            if defer.is_some() {
-                deferred += 1;
-            }
             match keep {
                 Some(Candidate::Due(item)) => due.push(item),
                 Some(Candidate::New(item)) => new.push(item),
@@ -212,7 +206,6 @@ pub fn plan(
         new_limit,
         throttled,
         next_due,
-        deferred_siblings: deferred,
         total_goals,
         learned,
     }
@@ -277,7 +270,6 @@ mod tests {
         // b reverse is eligible but deferred because b forward is in session.
         assert_eq!(p.new.len(), 1);
         assert_eq!(p.new[0].goal, Goal::Forward);
-        assert_eq!(p.deferred_siblings, 1);
         assert_eq!(p.new_limit, 1);
         assert_eq!(p.total_goals, 4);
         assert_eq!(p.learned, 1);

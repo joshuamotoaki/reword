@@ -121,14 +121,14 @@ fn restore_terminal() {
 
 /// The review screen: the whole session is drawn on the terminal's
 /// alternate screen, one frame per state, so nothing piles up and the
-/// scrollback is untouched. Rows are fixed: header, rule, ticker, blank,
-/// then the body from `BODY_ROW`, with the footer on the last row.
+/// scrollback is untouched. Rows are fixed: header, rule, blank, then
+/// the body from `BODY_ROW`, with the footer on the last row.
 pub struct Screen {
     active: bool,
 }
 
 /// Row where the card body starts (0-based).
-pub const BODY_ROW: usize = 4;
+pub const BODY_ROW: usize = 3;
 
 impl Screen {
     pub fn enter() -> io::Result<Screen> {
@@ -169,8 +169,6 @@ impl Screen {
         );
         let _ = queue!(out, cursor::MoveTo(0, 1));
         let _ = write!(out, " {}", style.dim(&"─".repeat(w.saturating_sub(2))));
-        let _ = queue!(out, cursor::MoveTo(0, 2));
-        let _ = write!(out, " {}", frame.ticker);
         for (i, line) in frame.body.iter().enumerate() {
             let row = BODY_ROW + i;
             if row + 1 >= h {
@@ -197,13 +195,12 @@ impl Screen {
     }
 }
 
-/// One review frame. `left` and `right` are plain header text; `ticker`,
-/// `body`, and `footer` are already styled. `cursor_at` is a (body line,
-/// column) to leave a visible cursor at for line input.
+/// One review frame. `left` and `right` are plain header text; `body`
+/// and `footer` are already styled. `cursor_at` is a (body line, column)
+/// to leave a visible cursor at for line input.
 pub struct Frame<'a> {
     pub left: String,
     pub right: String,
-    pub ticker: &'a str,
     pub body: &'a [String],
     pub footer: &'a str,
     pub cursor_at: Option<(usize, usize)>,
