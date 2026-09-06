@@ -2,7 +2,6 @@
 //! undo as an appended row, time-bounded with an optional continue.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::Write;
 use std::time::{Duration, Instant};
 
 use crate::clock::{Clock, interval_label};
@@ -11,8 +10,8 @@ use crate::history::{ReviewEvent, Row, RowKind};
 use crate::memory::Model;
 use crate::planner::{Item, Plan};
 use crate::store::{LoadedDeck, Store};
-use crate::term::{self, Key, Term};
-use crate::text::{answer_matches, plural};
+use crate::term::{self, Key, Style, Term};
+use crate::text::{self, answer_matches, plural};
 use crate::types::{Goal, Grade, Mode};
 
 /// A card graded Again comes back after this many other cards.
@@ -23,6 +22,10 @@ const NEW_EVERY: usize = 5;
 pub struct Options {
     pub mode: Mode,
     pub minutes: u32,
+    /// Deck label for the header.
+    pub label: String,
+    /// One-line notes for the ticker at session start.
+    pub notes: Vec<String>,
 }
 
 #[derive(Default, Debug)]
@@ -173,9 +176,14 @@ struct Session<'a> {
     done: Vec<Done>,
     session_events: HashMap<(usize, String, Goal), Vec<ReviewEvent>>,
     summary: Summary,
-    /// The time-up prompt already printed the summary line.
-    summary_shown: bool,
+    label: String,
+    /// What happened to the previous card, shown under the header.
+    ticker: String,
+    screen: term::Screen,
 }
+
+/// Left margin of the card body.
+const MARGIN: usize = 5;
 
 pub fn run(
     store: &Store,
@@ -186,6 +194,17 @@ pub fn run(
     term: &Term,
     opts: Options,
 ) -> Result<Summary> {
+    let mut notes = vec![{
+        let mut parts = vec![format!("{} due", plan.due.len())];
+        if plan.new_limit > 0 {
+            parts.push(format!("{} new", plan.new_limit));
+        }
+        parts.join(", ")
+    }];
+    notes.extend(opts.notes);
+    if opts.mode == Mode::Typed {
+        notes.push("enter checks · empty line reveals".into());
+    }
     let queue = Queue {
         due: plan.due.into(),
         new: plan.new.into(),
@@ -195,6 +214,7 @@ pub fn run(
         shown: 0,
         since_new: 0,
     };
+    let screen = term::Screen::enter()?;
     let mut s = Session {
         store,
         decks,
@@ -210,16 +230,10 @@ pub fn run(
         done: Vec::new(),
         session_events: HashMap::new(),
         summary: Summary::default(),
-        summary_shown: false,
+        label: opts.label,
+        ticker: term.out.dim(&notes.join(" · ")),
+        screen,
     };
-
-    if s.mode == Mode::Typed {
-        println!(
-            "{}",
-            term.out
-                .dim("Type the answer and press enter. An empty line reveals it.")
-        );
-    }
 
     let mut pending: Option<(Item, Origin, Stage)> = None;
     loop {
@@ -239,7 +253,6 @@ pub fn run(
         s.queue.account(origin);
         let can_undo = !s.done.is_empty();
         let started = Instant::now();
-        println!();
         let step = s.present(&item, &stage, can_undo)?;
         let elapsed_ms = started.elapsed().as_millis() as u64;
         match step {
@@ -257,7 +270,7 @@ pub fn run(
                 if origin == Origin::New {
                     s.summary.new_seen += 1;
                 }
-                s.print_result(&item, grade);
+                s.set_result(&item, grade);
                 s.done.push(Done {
                     item,
                     origin,
@@ -269,7 +282,7 @@ pub fn run(
             }
             Step::Skipped => {
                 s.skip(&item, elapsed_ms)?;
-                s.print_skip();
+                s.set_skip(&item);
                 s.done.push(Done {
                     item,
                     origin,
@@ -296,7 +309,7 @@ pub fn run(
                     s.summary.new_seen -= 1;
                 }
                 s.queue.restore(d.counters);
-                println!("{}", term.out.dim("↶ undo"));
+                s.ticker = term.out.dim("↶ undo");
                 pending = Some((d.item, d.origin, d.stage));
             }
         }
@@ -325,14 +338,68 @@ impl Session<'_> {
         evs
     }
 
-    fn print_prompt(&self, item: &Item) {
-        let card = self.card(item);
-        let tag = if self.multi {
-            format!("   {}", self.term.out.dim(self.decks[item.deck].name()))
-        } else {
-            String::new()
-        };
-        println!("  {}{tag}", card.prompt(item.goal));
+    fn draw(&self, body: &[String], footer: &str, cursor_at: Option<(usize, usize)>) {
+        self.screen.draw(
+            self.term,
+            &term::Frame {
+                left: format!("{} · {}", self.label, self.mode),
+                right: self.progress(),
+                ticker: &self.ticker,
+                body,
+                footer,
+                cursor_at,
+            },
+        );
+    }
+
+    /// Wrap `s` into body lines with the left margin. `lead` (already
+    /// styled, `lead_cells` wide) goes before the first line.
+    fn lines(
+        &self,
+        s: &str,
+        lead: &str,
+        lead_cells: usize,
+        paint: fn(Style, &str) -> String,
+    ) -> Vec<String> {
+        let avail = self
+            .term
+            .width()
+            .saturating_sub(MARGIN + lead_cells + 1)
+            .max(8);
+        text::wrap(s, avail)
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                let head = if i == 0 {
+                    lead.to_string()
+                } else {
+                    " ".repeat(lead_cells)
+                };
+                format!("{}{head}{}", " ".repeat(MARGIN), paint(self.term.out, l))
+            })
+            .collect()
+    }
+
+    fn prompt_lines(&self, item: &Item) -> Vec<String> {
+        let mut lines = self.lines(self.card(item).prompt(item.goal), "", 0, Style::bold);
+        if self.multi
+            && let Some(first) = lines.first_mut()
+        {
+            first.push_str(&format!(
+                "   {}",
+                self.term.out.dim(self.decks[item.deck].name())
+            ));
+        }
+        lines
+    }
+
+    fn hints(&self, pairs: &[(&str, &str)], can_undo: bool) -> String {
+        let pairs: Vec<(&str, &str)> = pairs
+            .iter()
+            .copied()
+            .filter(|(k, _)| can_undo || *k != "←")
+            .collect();
+        term::hints(self.term, &pairs)
     }
 
     fn present(&self, item: &Item, stage: &Stage, can_undo: bool) -> Result<Step> {
@@ -342,24 +409,23 @@ impl Session<'_> {
         }
     }
 
-    fn wait_key(&self, hint: &str, can_undo: bool) -> Result<Key> {
-        let hint = if can_undo {
-            hint.to_string()
-        } else {
-            hint.replace("  [←] undo", "")
-        };
-        term::show_hint(self.term, &hint);
-        let key = term::read_key()?;
-        term::clear_line();
-        Ok(key)
-    }
-
     fn present_recall(&self, item: &Item, stage: &Stage, can_undo: bool) -> Result<Step> {
-        self.print_prompt(item);
         let answer = self.card(item).answer(item.goal);
+        let mut body = self.prompt_lines(item);
+        body.push(String::new());
         if matches!(stage, Stage::Fresh) {
+            let footer = self.hints(
+                &[
+                    ("space", "reveal"),
+                    ("s", "skip"),
+                    ("←", "undo"),
+                    ("q", "quit"),
+                ],
+                can_undo,
+            );
+            self.draw(&body, &footer, None);
             loop {
-                match self.wait_key("[space] reveal  [s] skip  [←] undo  [q] quit", can_undo)? {
+                match term::read_key()? {
                     Key::Space | Key::Enter => break,
                     Key::Char('s') => return Ok(Step::Skipped),
                     Key::Char('q') | Key::Esc | Key::CtrlC | Key::CtrlD => return Ok(Step::Quit),
@@ -370,11 +436,22 @@ impl Session<'_> {
                 }
             }
         }
-        println!("  {answer}");
+        body.extend(self.lines(answer, "", 0, Style::cyan));
+        let footer = self.hints(
+            &[
+                ("space", "good"),
+                ("a", "again"),
+                ("h", "hard"),
+                ("e", "easy"),
+                ("s", "skip"),
+                ("←", "undo"),
+                ("q", "quit"),
+            ],
+            can_undo,
+        );
+        self.draw(&body, &footer, None);
         loop {
-            let grade = match self
-                .wait_key("[space] good  [a] again  [h] hard  [e] easy", can_undo)?
-            {
+            let grade = match term::read_key()? {
                 Key::Space | Key::Enter | Key::Char('g') | Key::Char('3') => Grade::Good,
                 Key::Char('a') | Key::Char('1') => Grade::Again,
                 Key::Char('h') | Key::Char('2') => Grade::Hard,
@@ -382,15 +459,6 @@ impl Session<'_> {
                 Key::Char('s') => return Ok(Step::Skipped),
                 Key::Char('q') | Key::Esc | Key::CtrlC | Key::CtrlD => return Ok(Step::Quit),
                 Key::Left | Key::Backspace | Key::Char('u') if can_undo => return Ok(Step::Undo),
-                Key::Char('?') => {
-                    println!(
-                        "{}",
-                        self.term.out.dim(
-                            "    also: [s] skip  [←] undo  [q] quit  [1-4] again/hard/good/easy"
-                        )
-                    );
-                    continue;
-                }
                 _ => continue,
             };
             return Ok(Step::Graded {
@@ -402,13 +470,28 @@ impl Session<'_> {
         }
     }
 
+    fn input_line(&self, typed: &str) -> String {
+        format!("{}{} {typed}", " ".repeat(MARGIN), self.term.out.dim("›"))
+    }
+
     fn present_typed(&self, item: &Item, stage: &Stage, can_undo: bool) -> Result<Step> {
-        self.print_prompt(item);
         let expected = self.card(item).answer(item.goal);
         let fresh = matches!(stage, Stage::Fresh);
+        let mut body = self.prompt_lines(item);
+        let input_row = body.len();
         let stage = match stage {
             Stage::Fresh => {
-                let Some(line) = term::read_line("  > ")? else {
+                body.push(self.input_line(""));
+                let footer = self.hints(
+                    &[
+                        ("enter", "check"),
+                        ("empty line", "reveal"),
+                        ("ctrl-d", "quit"),
+                    ],
+                    false,
+                );
+                self.draw(&body, &footer, Some((input_row, MARGIN + 2)));
+                let Some(line) = term::read_line("")? else {
                     return Ok(Step::Quit);
                 };
                 if line.trim().is_empty() {
@@ -420,22 +503,31 @@ impl Session<'_> {
                     }
                 }
             }
-            Stage::Checked { typed, correct } => {
-                println!("  > {typed}");
-                Stage::Checked {
-                    typed: typed.clone(),
-                    correct: *correct,
-                }
-            }
+            Stage::Checked { typed, correct } => Stage::Checked {
+                typed: typed.clone(),
+                correct: *correct,
+            },
             Stage::Revealed => Stage::Revealed,
         };
+        body.truncate(input_row);
+        let style = self.term.out;
         match &stage {
             Stage::Fresh => unreachable!(),
             Stage::Revealed => {
-                println!("  {expected}");
+                body.push(self.input_line(""));
+                body.extend(self.lines(expected, "", 0, Style::cyan));
+                let footer = self.hints(
+                    &[
+                        ("enter", "again"),
+                        ("s", "skip"),
+                        ("←", "undo"),
+                        ("q", "quit"),
+                    ],
+                    can_undo,
+                );
+                self.draw(&body, &footer, None);
                 loop {
-                    match self.wait_key("[enter] again  [s] skip  [←] undo  [q] quit", can_undo)?
-                    {
+                    match term::read_key()? {
                         Key::Enter | Key::Space | Key::Char('a') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Again,
@@ -467,12 +559,26 @@ impl Session<'_> {
                         stage,
                     });
                 }
-                println!("{} {expected}", self.term.out.green("✓"));
+                body.push(self.input_line(typed));
+                body.extend(self.lines(
+                    expected,
+                    &format!("{} ", style.green("✓")),
+                    2,
+                    Style::cyan,
+                ));
+                let footer = self.hints(
+                    &[
+                        ("enter", "good"),
+                        ("a", "again"),
+                        ("s", "skip"),
+                        ("←", "undo"),
+                        ("q", "quit"),
+                    ],
+                    can_undo,
+                );
+                self.draw(&body, &footer, None);
                 loop {
-                    match self.wait_key(
-                        "[enter] good  [a] again  [s] skip  [←] undo  [q] quit",
-                        can_undo,
-                    )? {
+                    match term::read_key()? {
                         Key::Enter | Key::Space | Key::Char('g') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Good,
@@ -504,12 +610,21 @@ impl Session<'_> {
                 typed,
                 correct: false,
             } => {
-                println!("{} {expected}", self.term.out.red("✗"));
+                body.push(self.input_line(typed));
+                body.extend(self.lines(expected, &format!("{} ", style.red("✗")), 2, Style::cyan));
+                let footer = self.hints(
+                    &[
+                        ("enter", "again"),
+                        ("o", "typo, count it"),
+                        ("s", "skip"),
+                        ("←", "undo"),
+                        ("q", "quit"),
+                    ],
+                    can_undo,
+                );
+                self.draw(&body, &footer, None);
                 loop {
-                    match self.wait_key(
-                        "[enter] again  [o] typo, count it  [s] skip  [←] undo  [q] quit",
-                        can_undo,
-                    )? {
+                    match term::read_key()? {
                         Key::Enter | Key::Space | Key::Char('a') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Again,
@@ -638,7 +753,7 @@ impl Session<'_> {
         format!("{done}/{total} · {time}")
     }
 
-    fn print_result(&self, item: &Item, grade: Grade) {
+    fn set_result(&mut self, item: &Item, grade: Grade) {
         let label = if grade == Grade::Again {
             "again soon".to_string()
         } else {
@@ -653,18 +768,16 @@ impl Session<'_> {
         } else {
             self.term.out.red("✗")
         };
-        println!(
-            "{sym} {}",
-            self.term.out.dim(&format!("{label} · {}", self.progress()))
-        );
+        let name = text::truncate(self.card(item).prompt(item.goal), 24);
+        self.ticker = format!("{sym} {}", self.term.out.dim(&format!("{name} · {label}")));
     }
 
-    fn print_skip(&self) {
-        println!(
-            "{}",
-            self.term
-                .out
-                .dim(&format!("→ skipped · {}", self.progress()))
+    fn set_skip(&mut self, item: &Item) {
+        let name = text::truncate(self.card(item).prompt(item.goal), 24);
+        self.ticker = format!(
+            "{} {}",
+            self.term.out.yellow("→"),
+            self.term.out.dim(&format!("{name} · skipped"))
         );
     }
 
@@ -676,27 +789,28 @@ impl Session<'_> {
         if remaining == 0 {
             return Ok(true);
         }
-        println!();
-        println!(
-            "{}",
-            self.term
-                .out
-                .bold(&format!("Time's up. {}", self.summary_line()))
-        );
-        let prompt = format!(
-            "{} remain. Continue for {} more? [y/N] ",
-            plural(remaining, "card"),
-            plural(self.minutes as usize, "minute")
-        );
-        print!("{prompt}");
-        let _ = std::io::stdout().flush();
+        let style = self.term.out;
+        let body = vec![
+            format!(
+                "{}{}",
+                " ".repeat(MARGIN),
+                style.bold(&format!("Time's up. {}", self.summary_line()))
+            ),
+            String::new(),
+            format!(
+                "{}{} remain. Continue for {} more?",
+                " ".repeat(MARGIN),
+                plural(remaining, "card"),
+                plural(self.minutes as usize, "minute")
+            ),
+        ];
+        let footer = self.hints(&[("y", "continue"), ("any other key", "finish")], false);
+        self.draw(&body, &footer, None);
         let key = term::read_key()?;
-        term::clear_line();
         if matches!(key, Key::Char('y') | Key::Char('Y')) {
             self.budget += Duration::from_secs(u64::from(self.minutes) * 60);
             Ok(false)
         } else {
-            self.summary_shown = true;
             Ok(true)
         }
     }
@@ -733,10 +847,8 @@ impl Session<'_> {
     fn finish(mut self) -> Result<Summary> {
         self.summary.secs = self.start.elapsed().as_secs();
         self.summary.remaining = self.queue.remaining();
-        if !self.summary_shown {
-            println!();
-            println!("{}", self.term.out.bold(&self.summary_line()));
-        }
+        self.screen.leave();
+        println!("{}", self.term.out.bold(&self.summary_line()));
         Ok(self.summary)
     }
 }

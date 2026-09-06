@@ -1,9 +1,14 @@
 //! Terminal plumbing: TTY detection, colors, single-key reads, line prompts.
 
 use std::io::{self, BufRead, IsTerminal, Write};
+use std::sync::Once;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal;
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::{cursor, execute, queue};
+
+use crate::text;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Style {
@@ -32,6 +37,9 @@ impl Style {
     }
     pub fn yellow(self, s: &str) -> String {
         self.paint("33", s)
+    }
+    pub fn cyan(self, s: &str) -> String {
+        self.paint("36", s)
     }
 }
 
@@ -68,6 +76,130 @@ impl Term {
     pub fn width(&self) -> usize {
         terminal::size().map(|(w, _)| w as usize).unwrap_or(80)
     }
+
+    pub fn size(&self) -> (usize, usize) {
+        terminal::size()
+            .map(|(w, h)| (w as usize, h as usize))
+            .unwrap_or((80, 24))
+    }
+}
+
+/// Whether the alternate screen is active, so a Ctrl-C during cooked-mode
+/// input can restore the terminal before exiting.
+static ALT_ACTIVE: AtomicBool = AtomicBool::new(false);
+static CTRLC: Once = Once::new();
+
+fn restore_terminal() {
+    let mut out = io::stdout();
+    if ALT_ACTIVE.swap(false, Ordering::SeqCst) {
+        let _ = execute!(out, cursor::Show, LeaveAlternateScreen);
+    }
+    let _ = terminal::disable_raw_mode();
+}
+
+/// The review screen: the whole session is drawn on the terminal's
+/// alternate screen, one frame per state, so nothing piles up and the
+/// scrollback is untouched. Rows are fixed: header, rule, ticker, blank,
+/// then the body from `BODY_ROW`, with the footer on the last row.
+pub struct Screen {
+    active: bool,
+}
+
+/// Row where the card body starts (0-based).
+pub const BODY_ROW: usize = 4;
+
+impl Screen {
+    pub fn enter() -> io::Result<Screen> {
+        CTRLC.call_once(|| {
+            let _ = ctrlc::set_handler(|| {
+                restore_terminal();
+                std::process::exit(130);
+            });
+        });
+        execute!(io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+        ALT_ACTIVE.store(true, Ordering::SeqCst);
+        Ok(Screen { active: true })
+    }
+
+    pub fn leave(&mut self) {
+        if self.active {
+            self.active = false;
+            restore_terminal();
+        }
+    }
+
+    /// Draw one frame.
+    pub fn draw(&self, term: &Term, frame: &Frame) {
+        let (w, h) = term.size();
+        let style = term.out;
+        let mut out = io::stdout().lock();
+        let _ = queue!(out, terminal::Clear(terminal::ClearType::All));
+        let gap = w
+            .saturating_sub(2 + text::width(&frame.left) + text::width(&frame.right))
+            .max(1);
+        let _ = queue!(out, cursor::MoveTo(0, 0));
+        let _ = write!(
+            out,
+            " {}{}{}",
+            style.bold(&frame.left),
+            " ".repeat(gap),
+            style.dim(&frame.right)
+        );
+        let _ = queue!(out, cursor::MoveTo(0, 1));
+        let _ = write!(out, " {}", style.dim(&"─".repeat(w.saturating_sub(2))));
+        let _ = queue!(out, cursor::MoveTo(0, 2));
+        let _ = write!(out, " {}", frame.ticker);
+        for (i, line) in frame.body.iter().enumerate() {
+            let row = BODY_ROW + i;
+            if row + 1 >= h {
+                break;
+            }
+            let _ = queue!(out, cursor::MoveTo(0, row as u16));
+            let _ = write!(out, "{line}");
+        }
+        let _ = queue!(out, cursor::MoveTo(0, h.saturating_sub(1) as u16));
+        let _ = write!(out, " {}", frame.footer);
+        match frame.cursor_at {
+            Some((line, col)) => {
+                let _ = queue!(
+                    out,
+                    cursor::MoveTo(col as u16, (BODY_ROW + line) as u16),
+                    cursor::Show
+                );
+            }
+            None => {
+                let _ = queue!(out, cursor::Hide);
+            }
+        }
+        let _ = out.flush();
+    }
+}
+
+/// One review frame. `left` and `right` are plain header text; `ticker`,
+/// `body`, and `footer` are already styled. `cursor_at` is a (body line,
+/// column) to leave a visible cursor at for line input.
+pub struct Frame<'a> {
+    pub left: String,
+    pub right: String,
+    pub ticker: &'a str,
+    pub body: &'a [String],
+    pub footer: &'a str,
+    pub cursor_at: Option<(usize, usize)>,
+}
+
+impl Drop for Screen {
+    fn drop(&mut self) {
+        self.leave();
+    }
+}
+
+/// A footer keymap: the key in normal weight, the action dim.
+pub fn hints(term: &Term, pairs: &[(&str, &str)]) -> String {
+    pairs
+        .iter()
+        .map(|(k, v)| format!("{k} {}", term.out.dim(v)))
+        .collect::<Vec<_>>()
+        .join("   ")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,22 +259,6 @@ pub fn read_key() -> io::Result<Key> {
             });
         }
     }
-}
-
-/// Column where transient key hints start, when the terminal is wide enough.
-pub const HINT_COL: usize = 38;
-
-/// Print a dim key hint on the current line without a newline.
-pub fn show_hint(term: &Term, hint: &str) {
-    let width = term.width();
-    let col = if HINT_COL + crate::text::width(hint) < width {
-        HINT_COL
-    } else {
-        2
-    };
-    let mut out = io::stdout().lock();
-    let _ = write!(out, "{}{}", " ".repeat(col), term.out.dim(hint));
-    let _ = out.flush();
 }
 
 /// Erase the current line (the hint) and return to column 0.

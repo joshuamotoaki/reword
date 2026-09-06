@@ -115,24 +115,15 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     let minutes = settings.session_minutes;
 
     let style = ctx.term.out;
-    let mut parts = vec![format!("{} due", plan.due.len())];
-    if plan.new_limit > 0 {
-        parts.push(format!("{} new", plan.new_limit));
-    }
-    out::println(&format!(
-        "{} · {} min · {} · {mode}",
-        style.bold(&label),
-        minutes,
-        parts.join(", ")
-    ));
+    let mut notes = Vec::new();
     if plan.throttled {
-        out::println(&style.dim(&format!("new cards paused: {} overdue", plan.due.len())));
+        notes.push(format!("new cards paused: {} overdue", plan.due.len()));
     }
     if plan.deferred_siblings > 0 {
-        out::println(&style.dim(&format!(
+        notes.push(format!(
             "{} held for a later session (its other side is in this one)",
             plural(plan.deferred_siblings, "reverse card")
-        )));
+        ));
     }
 
     let new_waiting = plan.new_waiting();
@@ -144,7 +135,12 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         &model,
         &ctx.clock,
         &ctx.term,
-        session::Options { mode, minutes },
+        session::Options {
+            mode,
+            minutes,
+            label,
+            notes,
+        },
     )?;
 
     let deck_arg = if args.decks.is_empty() {

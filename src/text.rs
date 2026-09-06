@@ -84,6 +84,64 @@ pub fn width(s: &str) -> usize {
     UnicodeWidthStr::width(s)
 }
 
+/// Greedy word wrap to `cells` display cells. Text without spaces (CJK)
+/// breaks between characters.
+pub fn wrap(s: &str, cells: usize) -> Vec<String> {
+    let cells = cells.max(1);
+    let mut lines = Vec::new();
+    for para in s.split('\n') {
+        let mut line = String::new();
+        let mut line_w = 0;
+        for word in para.split(' ') {
+            let ww = width(word);
+            if ww > cells {
+                // Too long for any line: break it by character.
+                for ch in word.chars() {
+                    let cw = width(&ch.to_string());
+                    if line_w + cw > cells && !line.is_empty() {
+                        lines.push(std::mem::take(&mut line));
+                        line_w = 0;
+                    }
+                    line.push(ch);
+                    line_w += cw;
+                }
+                continue;
+            }
+            let sep = if line.is_empty() { 0 } else { 1 };
+            if line_w + sep + ww > cells {
+                lines.push(std::mem::take(&mut line));
+                line_w = 0;
+            } else if sep == 1 {
+                line.push(' ');
+                line_w += 1;
+            }
+            line.push_str(word);
+            line_w += ww;
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+/// Cut to at most `cells` display cells, ending with `…` if cut.
+pub fn truncate(s: &str, cells: usize) -> String {
+    if width(s) <= cells {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    let mut w = 0;
+    for ch in s.chars() {
+        let cw = width(&ch.to_string());
+        if w + cw > cells.saturating_sub(1) {
+            break;
+        }
+        out.push(ch);
+        w += cw;
+    }
+    out.push('…');
+    out
+}
+
 /// Pad on the right to `cells` display cells.
 pub fn pad_right(s: &str, cells: usize) -> String {
     let w = width(s);

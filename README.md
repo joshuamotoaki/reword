@@ -9,12 +9,15 @@ All data is stored in plain text files.
 If you want sync across devices, you can sync those files using git or anything.
 
 ```
-$ reword review cantonese -m 10
-cantonese · 10 min · 23 due, 4 new · recall
+ cantonese · recall                              12/28 · 6 min left
+ ─────────────────────────────────────────────────────────────────
+ ✓ 飲 · 3d
 
-  食
-  to eat
-✓ 3d · 1/27 · 10 min left
+     食
+
+     to eat
+
+ space good   a again   h hard   e easy   s skip   ← undo   q quit
 ```
 
 ## Install
@@ -103,6 +106,11 @@ In both modes: `s` skips a card without grading it, `←` (or `u`) undoes the
 previous grade or skip as many times as you like, `q` quits. Nothing is ever
 lost: every grade is written to the log the moment you press the key, and
 undo is written as its own row.
+
+A session takes over the terminal, like `less`: each card is drawn in the
+same place, the line under the header says what happened to the previous
+card, and the keys you can press are always on the bottom row. When the
+session ends the terminal comes back as it was, with a one-line summary.
 
 Sessions are bounded by time, not by a due count. `-m 5` gives you five
 minutes; when they are up you get a summary and one question, continue or

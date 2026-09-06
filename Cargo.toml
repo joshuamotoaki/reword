@@ -27,6 +27,7 @@ inherits = "release"
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.5"
 crossterm = "0.29.0"
+ctrlc = "3"
 fsrs = "6.6.2"
 jiff = "0.2.35"
 serde = { version = "1.0.229", features = ["derive"] }

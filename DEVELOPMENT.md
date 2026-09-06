@@ -47,7 +47,8 @@ These shaped every decision. Changes that break one need a good reason.
 | --- | --- |
 | `clap` 4 (derive) | Help text, typo suggestions, subcommands, completions. |
 | `fsrs` 6.6.2 | The FSRS-6 code Anki ships, including the optimizer behind `reword optimize`. Scheduler-only `rs-fsrs` is the fallback if build time ever hurts. |
-| `crossterm` | Raw single-key input and colors. Line-oriented output, not full-screen. |
+| `crossterm` | Raw single-key input, colors, and the alternate screen used during `review`. Every other command is line-oriented. |
+| `ctrlc` | Restores the terminal if Ctrl-C lands during cooked-mode typed input, when raw mode is off and crossterm cannot see it. |
 | `jiff` | Local-day arithmetic with a 4 am rollover. |
 | `toml`, `serde` | `config.toml` and `params.toml`. |
 
@@ -67,7 +68,8 @@ src/
   memory.rs    FSRS-6 state derived from replayed history
   planner.rs   what is due, what is new, how much fits in the time budget
   session.rs   the review loop: reveal, grade, undo, requeue, time budget
-  term.rs      TTY detection, colors, single-key reads, line prompts
+  term.rs      TTY detection, colors, single-key reads, line prompts, the
+               review Screen (alternate screen, fixed rows, footer keymap)
   text.rs      Unicode-aware keys, typed-answer matching, log escaping
   clock.rs     UTC timestamps, local study days, 4 am rollover
   config.rs    config.toml and params.toml, everything optional
@@ -99,6 +101,13 @@ src/
   worth. An explicit `--new N` bypasses the throttle.
 - **Typed answers** are read as a cooked line so IME composition works. Raw
   mode is only for single-key prompts.
+- **The review screen** redraws a whole frame per state on the alternate
+  screen: header (deck · mode, progress), rule, ticker (previous card's
+  result), body from row 4 (front in bold, answer in cyan), footer keymap on
+  the last row. Nothing is appended, so the scrollback only gets the
+  summary printed after the screen is left. Colors carry roles only:
+  green good, red again, yellow skip, cyan answer, dim everything
+  secondary. Layout must still work with `NO_COLOR`.
 - **Deck parse problems** are warnings in `review` (the line is skipped)
   and hard errors in `add`, so a typo never locks anyone out of reviewing.
 - **Precedence:** flags > environment (`REWORD_DIR`, `NO_COLOR`) > config.
