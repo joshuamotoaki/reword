@@ -1,6 +1,7 @@
 mod cli;
 mod clock;
 mod commands;
+mod complete;
 mod config;
 mod deck;
 mod error;
@@ -15,12 +16,17 @@ mod text;
 mod types;
 mod viz;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use crate::cli::{Cli, Command};
 use crate::commands::Ctx;
 
 fn main() {
+    clap_complete::CompleteEnv::with_factory(Cli::command)
+        .bin("reword")
+        .completer("reword")
+        .complete();
+
     let cli = Cli::parse();
     let term = term::Term::detect(cli.no_color, cli.no_input, cli.quiet);
     let ctx = Ctx {
@@ -29,6 +35,10 @@ fn main() {
         clock: clock::Clock::system(),
         json: cli.json,
     };
+
+    if !matches!(cli.command, Some(Command::Completions { .. })) {
+        commands::completions::ensure(&ctx.term);
+    }
 
     let result = match cli.command {
         None => commands::status::run(&ctx),
@@ -41,7 +51,7 @@ fn main() {
         Some(Command::Check) => commands::check::run(&ctx),
         Some(Command::Stats { decks }) => commands::stats::run(&ctx, &decks),
         Some(Command::Optimize) => commands::optimize::run(&ctx),
-        Some(Command::Completions { shell }) => commands::completions::run(shell),
+        Some(Command::Completions { shell, install }) => commands::completions::run(shell, install),
     };
 
     match result {

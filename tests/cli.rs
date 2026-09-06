@@ -268,7 +268,9 @@ fn completions_and_help_work() {
     let (_tmp, dir) = fresh();
     let o = reword(&dir, &["completions", "zsh"]);
     assert!(o.status.success());
-    assert!(stdout(&o).contains("_reword"));
+    let script = stdout(&o);
+    assert!(script.contains("compdef"));
+    assert!(script.contains("reword"));
     let o = reword(&dir, &["help", "review"]);
     assert!(o.status.success());
     let help = stdout(&o);
@@ -277,6 +279,74 @@ fn completions_and_help_work() {
     assert!(help.contains("-n"));
     let o = reword(&dir, &["--version"]);
     assert!(stdout(&o).starts_with("reword "));
+}
+
+#[test]
+fn tab_completes_commands_and_decks() {
+    let (_tmp, dir) = fresh();
+    reword(&dir, &["init"]);
+    let cmds = complete(&dir, &["reword", ""], 1);
+    assert!(cmds.contains("review"), "{cmds}");
+    assert!(cmds.contains("add"), "{cmds}");
+    assert!(cmds.contains("init"), "{cmds}");
+    let decks = complete(&dir, &["reword", "review", ""], 2);
+    assert!(decks.contains("example"), "{decks}");
+}
+
+#[test]
+fn completions_do_not_touch_rc_when_not_a_tty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path();
+    let (_data, dir) = fresh();
+    let o = Command::new(env!("CARGO_BIN_EXE_reword"))
+        .env("HOME", home)
+        .env("SHELL", "/bin/zsh")
+        .env("REWORD_DIR", &dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("status");
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!home.join(".zshrc").exists());
+}
+
+#[test]
+fn completions_install_appends_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path();
+    let o = Command::new(env!("CARGO_BIN_EXE_reword"))
+        .args(["completions", "--install"])
+        .env("HOME", home)
+        .env("SHELL", "/bin/zsh")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("install");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let zshrc = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+    assert!(zshrc.contains("reword completions zsh"));
+    let o = Command::new(env!("CARGO_BIN_EXE_reword"))
+        .args(["completions", "--install"])
+        .env("HOME", home)
+        .env("SHELL", "/bin/zsh")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("install again");
+    assert!(o.status.success());
+    assert!(stdout(&o).contains("already"));
+    assert_eq!(zshrc.matches("reword completions").count(), 1);
+}
+
+fn complete(dir: &Path, words: &[&str], index: usize) -> String {
+    let o = Command::new(env!("CARGO_BIN_EXE_reword"))
+        .arg("--")
+        .args(words)
+        .env("COMPLETE", "zsh")
+        .env("_CLAP_COMPLETE_INDEX", index.to_string())
+        .env("REWORD_DIR", dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("complete");
+    assert!(o.status.success(), "{}", stderr(&o));
+    stdout(&o)
 }
 
 #[test]

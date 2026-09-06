@@ -2,8 +2,11 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueHint};
+use clap_complete::ArgValueCompleter;
 use clap_complete::Shell;
+
+use crate::complete;
 
 const AFTER_HELP: &str = "\
 Examples:
@@ -29,7 +32,13 @@ asked in both directions. Edit them freely; history is keyed on the front.";
 )]
 pub struct Cli {
     /// Data directory [default: ~/reword]
-    #[arg(long, global = true, value_name = "PATH", env = "REWORD_DIR")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        env = "REWORD_DIR",
+        value_hint = ValueHint::DirPath
+    )]
     pub dir: Option<PathBuf>,
 
     /// Machine-readable output where a command prints data
@@ -63,14 +72,17 @@ pub enum Command {
     /// Open a deck file in $EDITOR, then check it
     Edit {
         /// Deck name (the only deck is used if there is just one)
+        #[arg(add = ArgValueCompleter::new(complete::decks), value_hint = ValueHint::Other)]
         deck: Option<String>,
     },
     /// List decks with card and due counts
     Decks,
     /// Change a card's front and carry its history along
     Rename {
+        #[arg(add = ArgValueCompleter::new(complete::decks), value_hint = ValueHint::Other)]
         deck: String,
         /// Current front, as written in the deck or the log
+        #[arg(add = ArgValueCompleter::new(complete::fronts), value_hint = ValueHint::Other)]
         old: String,
         /// New front
         new: String,
@@ -80,17 +92,26 @@ pub enum Command {
     /// Retention, reviews per day, and a 14-day forecast
     Stats {
         /// Decks to include (default: all)
+        #[arg(add = ArgValueCompleter::new(complete::decks), value_hint = ValueHint::Other)]
         decks: Vec<String>,
     },
     /// Fit FSRS parameters to your history and write params.toml
     Optimize,
-    /// Print shell completions (bash, zsh, fish, elvish, powershell)
-    Completions { shell: Shell },
+    /// Print a snippet that enables tab completion (usually unnecessary)
+    Completions {
+        /// bash, zsh, fish, elvish, or powershell
+        #[arg(value_enum, required_unless_present = "install")]
+        shell: Option<Shell>,
+        /// Write the snippet to your shell config now
+        #[arg(long)]
+        install: bool,
+    },
 }
 
 #[derive(Args, Debug)]
 pub struct ReviewArgs {
     /// Decks to review (default: all)
+    #[arg(add = ArgValueCompleter::new(complete::decks), value_hint = ValueHint::Other)]
     pub decks: Vec<String>,
 
     /// Typed session: type each answer, checked automatically
@@ -110,7 +131,12 @@ pub struct ReviewArgs {
     pub cards: Option<usize>,
 
     /// Only cards under this Markdown heading
-    #[arg(long, value_name = "HEADING")]
+    #[arg(
+        long,
+        value_name = "HEADING",
+        add = ArgValueCompleter::new(complete::headings),
+        value_hint = ValueHint::Other
+    )]
     pub under: Option<String>,
 
     /// New cards to introduce this session, ignoring the daily cap
@@ -130,6 +156,7 @@ pub struct ReviewArgs {
 #[derive(Args, Debug)]
 pub struct AddArgs {
     /// Deck name; created if it does not exist (asks first)
+    #[arg(add = ArgValueCompleter::new(complete::decks), value_hint = ValueHint::Other)]
     pub deck: Option<String>,
     /// Front of the card
     pub front: Option<String>,

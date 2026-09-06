@@ -34,6 +34,10 @@ That builds the binary and puts `reword` on your PATH (`~/.cargo/bin`).
 Same command again after you pull to update. `cargo run -- review` works
 too, but install is the easy way to just use it.
 
+The first time you run `reword` in a terminal, tab completion for commands
+and deck names is enabled for your shell. Open a new tab (or `source`
+your `~/.zshrc` / `~/.bashrc`) and Tab after `reword` lists commands.
+
 ## Quick start
 
 ```bash
@@ -211,7 +215,7 @@ reword rename DECK OLD NEW   change a front and carry its history
 reword check                 validate decks and logs
 reword stats [DECK...]       retention, pace, 14-day forecast
 reword optimize              fit FSRS parameters to your history
-reword completions SHELL     shell completions
+reword completions [SHELL]   tab-completion snippet (`--install` if you want it now)
 ```
 
 `--json` on `reword`, `decks`, `check`, `stats`, and `optimize` prints data
