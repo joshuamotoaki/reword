@@ -5,6 +5,7 @@ edition = "2024"
 description = "A plain-text flashcard CLI with FSRS spaced repetition"
 license = "Apache-2.0"
 repository = "https://github.com/joshuamotoaki/reword"
+homepage = "https://github.com/joshuamotoaki/reword"
 readme = "README.md"
 keywords = ["flashcards", "spaced-repetition", "fsrs", "cli"]
 categories = ["command-line-utilities"]
@@ -17,6 +18,10 @@ path = "src/main.rs"
 lto = true
 codegen-units = 1
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }

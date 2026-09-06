@@ -19,11 +19,25 @@ cantonese · 10 min · 23 due, 4 new · recall
 
 ## Install
 
+Homebrew (macOS and Linux):
+
+```bash
+brew install joshuamotoaki/tap/reword
+```
+
+Shell installer (prebuilt binary, no Rust needed):
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/joshuamotoaki/reword/releases/latest/download/reword-cli-installer.sh | sh
+```
+
+From source with Cargo:
+
 ```bash
 cargo install reword-cli
 ```
 
-Or download a binary from the releases page and put `reword` on your `PATH`.
+Or download a binary from the [releases page](https://github.com/joshuamotoaki/reword/releases) and put `reword` on your `PATH`.
 
 ## Quick start
 
