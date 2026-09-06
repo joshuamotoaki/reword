@@ -1,12 +1,16 @@
 # Reword
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Homebrew](https://img.shields.io/badge/homebrew-joshuamotoaki%2Ftap-FBB040?logo=homebrew&logoColor=white)](https://github.com/joshuamotoaki/homebrew-tap)
+[![GitHub release](https://img.shields.io/github/v/release/joshuamotoaki/reword)](https://github.com/joshuamotoaki/reword/releases)
+[![FSRS-6](https://img.shields.io/badge/scheduler-FSRS--6-6f42c1)](https://github.com/open-spaced-repetition/fsrs4anki)
+
 I wanted a super simple flashcard app I could use to learn languages.
 No frills.
-Besides custom spaced repetition. I guess that's a frill.
 
 This is completely free and runs locally on your machine.
 All data is stored in plain text files.
-If you want sync across devices, you can sync those files using git or anything.
+If you want sync across devices, you can sync those files using git or something.
 
 ```
  cantonese · recall                              12/28 · 4:18 left
