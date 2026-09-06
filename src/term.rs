@@ -74,7 +74,10 @@ impl Term {
     }
 
     pub fn width(&self) -> usize {
-        terminal::size().map(|(w, _)| w as usize).unwrap_or(80)
+        match terminal::size() {
+            Ok((w, _)) if w >= 20 => w as usize,
+            _ => 80,
+        }
     }
 
     pub fn size(&self) -> (usize, usize) {

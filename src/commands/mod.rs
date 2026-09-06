@@ -21,7 +21,9 @@ use crate::memory::Model;
 use crate::out;
 use crate::planner::{self, NewPolicy};
 use crate::store::{LoadedDeck, Store};
-use crate::term::Term;
+use crate::term::{Style, Term};
+use crate::text;
+use crate::viz;
 
 pub struct Ctx {
     pub store: Store,
@@ -65,6 +67,43 @@ impl Ctx {
 }
 
 /// Per-deck numbers shared by `status`, `decks` and `stats`.
+/// Learned in green, due in yellow, unseen dim: the same bar everywhere.
+pub fn progress_bar(
+    style: Style,
+    goals: usize,
+    learned: usize,
+    due: usize,
+    cells: usize,
+) -> String {
+    viz::bar(
+        style,
+        &[
+            viz::Segment {
+                n: learned.saturating_sub(due),
+                ch: '█',
+                paint: Style::green,
+            },
+            viz::Segment {
+                n: due,
+                ch: '▓',
+                paint: Style::yellow,
+            },
+        ],
+        goals,
+        cells,
+    )
+}
+
+/// A right-aligned count, colored only when nonzero.
+pub fn count(style: Style, n: usize, cells: usize, paint: viz::Paint) -> String {
+    let s = text::pad_left(&n.to_string(), cells);
+    if n == 0 {
+        style.dim(&s)
+    } else {
+        paint(style, &s)
+    }
+}
+
 pub struct DeckSummary {
     pub name: String,
     pub cards: usize,

@@ -71,6 +71,8 @@ src/
   term.rs      TTY detection, colors, single-key reads, line prompts, the
                review Screen (alternate screen, fixed rows, footer keymap)
   text.rs      Unicode-aware keys, typed-answer matching, log escaping
+  viz.rs       terminal charts for decks/stats: segmented bar, heat strip,
+               column chart; distinct glyphs per segment so NO_COLOR reads
   clock.rs     UTC timestamps, local study days, 4 am rollover
   config.rs    config.toml and params.toml, everything optional
   types.rs     Goal, Mode, Grade

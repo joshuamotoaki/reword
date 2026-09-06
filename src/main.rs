@@ -13,6 +13,7 @@ mod store;
 mod term;
 mod text;
 mod types;
+mod viz;
 
 use clap::Parser;
 

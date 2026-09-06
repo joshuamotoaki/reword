@@ -2,15 +2,18 @@
 
 use std::collections::BTreeSet;
 
-use super::{Ctx, summarize};
+use super::{Ctx, progress_bar, summarize};
 use crate::clock::{Clock, days_between};
 use crate::error::Result;
 use crate::memory::Model;
 use crate::out;
 use crate::store::LoadedDeck;
-use crate::text::{pad_left, plural};
+use crate::term::Style;
+use crate::text::{pad_right, plural};
+use crate::viz;
 
 const FORECAST_DAYS: i32 = 14;
+const ACTIVITY_DAYS: usize = 30;
 
 struct Stats {
     cards: usize,
@@ -28,6 +31,8 @@ struct Stats {
     minutes_30d: f64,
     forecast: Vec<usize>,
     review_days: usize,
+    /// Reviews per study day over the last 30 days, oldest first.
+    activity: Vec<usize>,
 }
 
 fn compute(decks: &[LoadedDeck], model: &Model, clock: &Clock) -> Stats {
@@ -47,6 +52,7 @@ fn compute(decks: &[LoadedDeck], model: &Model, clock: &Clock) -> Stats {
         minutes_30d: 0.0,
         forecast: vec![0; FORECAST_DAYS as usize],
         review_days: 0,
+        activity: vec![0; ACTIVITY_DAYS],
     };
     let mut reviews_14d = 0usize;
     let mut days = BTreeSet::new();
@@ -58,6 +64,10 @@ fn compute(decks: &[LoadedDeck], model: &Model, clock: &Clock) -> Stats {
                 let age = now.duration_since(ev.ts).as_secs();
                 let day = clock.study_day(ev.ts);
                 days.insert(day);
+                let back = days_between(day, today);
+                if (0..ACTIVITY_DAYS as i32).contains(&back) {
+                    s.activity[ACTIVITY_DAYS - 1 - back as usize] += 1;
+                }
                 if age <= 7 * 86_400 {
                     s.reviews_7d += 1;
                 }
@@ -153,63 +163,100 @@ pub fn run(ctx: &Ctx, deck_args: &[String]) -> Result<i32> {
     } else {
         names.join(", ")
     };
-    out::println(&style.bold(&which));
+    let label = |l: &str| format!(" {}", pad_right(l, 11));
+    let bar_w = ctx.term.width().saturating_sub(48).clamp(10, 24);
     let both_ways = st.goals - st.cards;
-    let sides = if both_ways > 0 {
-        format!(" · {} prompts ({} asked both ways)", st.goals, both_ways)
-    } else {
-        String::new()
-    };
+
+    out::println(&style.bold(&which));
+    out::println("");
+
+    let mut cards = vec![plural(st.cards, "card")];
+    if both_ways > 0 {
+        cards.push(format!("{} prompts", st.goals));
+        cards.push(format!("{both_ways} asked both ways"));
+    }
+    out::println(&format!("{}{}", label("Cards"), cards.join(" · ")));
     out::println(&format!(
-        "  {}{sides} · {} learned · {} unseen ({} ready to start) · {} due today",
-        plural(st.cards, "card"),
-        st.learned,
-        st.new_available,
-        new_eligible,
-        st.due
+        "{}{}   {} · {} · {}",
+        label(""),
+        progress_bar(style, st.goals, st.learned, st.due, bar_w),
+        style.green(&format!("{} learned", st.learned)),
+        if st.due > 0 {
+            style.yellow(&format!("{} due", st.due))
+        } else {
+            style.dim("0 due")
+        },
+        style.dim(&format!("{} unseen", st.new_available)),
     ));
     out::println("");
-    out::println(&format!(
-        "  Reviews: {} total on {} · {} in the last 7 days · {} in the last 30 · {:.1}/day over 14",
-        st.reviews_total,
-        plural(st.review_days, "day"),
-        st.reviews_7d,
-        st.reviews_30d,
-        st.per_day_14d
-    ));
+
+    let target = settings.desired_retention as f64;
     match retention {
-        Some(r) => out::println(&format!(
-            "  Retention (30d): {:.0}% of {} across-day recalls · target {:.0}% · {:.0} min studied",
-            r * 100.0,
-            st.retention_30d.1,
-            settings.desired_retention * 100.0,
-            st.minutes_30d
-        )),
+        Some(r) => {
+            let paint: viz::Paint = if r >= target {
+                Style::green
+            } else {
+                Style::yellow
+            };
+            let filled = (r * 20.0).round() as usize;
+            out::println(&format!(
+                "{}{}  {}{}   {}",
+                label("Retention"),
+                style.bold(&format!("{:>3.0}%", r * 100.0)),
+                paint(style, &"█".repeat(filled)),
+                style.dim(&"░".repeat(20 - filled)),
+                style.dim(&format!(
+                    "{} recalls in 30 days · target {:.0}%",
+                    st.retention_30d.1,
+                    target * 100.0
+                ))
+            ));
+        }
         None => out::println(&format!(
-            "  Retention (30d): no across-day recalls yet · target {:.0}%",
-            settings.desired_retention * 100.0
+            "{}{}",
+            label("Retention"),
+            style.dim(&format!(
+                "no across-day recalls yet · target {:.0}%",
+                target * 100.0
+            ))
         )),
     }
+    out::println(&format!(
+        "{}{} total · {} this week · {}/day · {} min studied",
+        label("Reviews"),
+        style.bold(&st.reviews_total.to_string()),
+        style.bold(&st.reviews_7d.to_string()),
+        style.bold(&format!("{:.1}", st.per_day_14d)),
+        style.bold(&format!("{:.0}", st.minutes_30d)),
+    ));
+    let active = st.activity.iter().filter(|n| **n > 0).count();
+    out::println(&format!(
+        "{}{}   {}",
+        label("Activity"),
+        viz::strip(style, &st.activity),
+        style.dim(&format!("{active} of the last {ACTIVITY_DAYS} days"))
+    ));
     out::println("");
-    out::println(&format!("  Due in the next {FORECAST_DAYS} days:"));
+
+    out::println(&format!(
+        "{}{}",
+        label("Due ahead"),
+        style.dim("next 14 days")
+    ));
     let labels: Vec<String> = (0..FORECAST_DAYS)
         .map(|d| match d {
-            0 => "today".into(),
-            1 => "tmrw".into(),
+            0 => "td".into(),
             n => format!("+{n}"),
         })
         .collect();
-    let row1: Vec<String> = labels.iter().map(|l| pad_left(l, 5)).collect();
-    let row2: Vec<String> = st
-        .forecast
-        .iter()
-        .map(|n| pad_left(&n.to_string(), 5))
-        .collect();
-    out::println(&format!("  {}", style.dim(&row1.join(""))));
-    out::println(&format!("  {}", row2.join("")));
+    for line in viz::columns(style, &st.forecast, &labels, 4, "     ", |i| {
+        if i == 0 { Style::yellow } else { Style::cyan }
+    }) {
+        out::println(&line);
+    }
     out::println("");
     out::println(&style.dim(&format!(
-        "  FSRS parameters: {} · desired retention {:.2}",
+        " FSRS {} · desired retention {:.2}",
         if model.custom {
             "params.toml"
         } else {

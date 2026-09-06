@@ -1,9 +1,10 @@
 //! `reword decks`: every deck with its counts.
 
-use super::{Ctx, summarize, summary_json};
+use super::{Ctx, count, progress_bar, summarize, summary_json};
 use crate::clock::ago;
 use crate::error::Result;
 use crate::out;
+use crate::term::Style;
 use crate::text::{pad_left, pad_right, width};
 
 pub fn run(ctx: &Ctx) -> Result<i32> {
@@ -30,16 +31,18 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
     if summaries.is_empty() {
         out::println("No decks. Add a card to create one: reword add DECK FRONT BACK");
     }
+    let style = ctx.term.out;
     let name_w = summaries
         .iter()
         .map(|s| width(&s.name))
         .max()
         .unwrap_or(4)
         .max(4);
-    let style = ctx.term.out;
+    let bar_w = ctx.term.width().saturating_sub(name_w + 42).clamp(10, 24);
     out::println(&style.dim(&format!(
-        "  {}  cards  learned  due  new   last review",
-        pad_right("deck", name_w)
+        " {}  {}  learned  due  new  last review",
+        pad_right("deck", name_w),
+        pad_right("progress", bar_w)
     )));
     for s in &summaries {
         let last = s
@@ -47,12 +50,13 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
             .map(|t| ago(t, now))
             .unwrap_or_else(|| "never".into());
         out::println(&format!(
-            "  {}  {}  {}  {}  {}   {last}",
-            pad_right(&s.name, name_w),
-            pad_left(&s.cards.to_string(), 5),
-            pad_left(&s.learned.to_string(), 7),
-            pad_left(&s.due.to_string(), 3),
-            pad_left(&s.new_available.to_string(), 3),
+            " {}  {}  {}  {}  {}  {}",
+            style.bold(&pad_right(&s.name, name_w)),
+            progress_bar(style, s.goals, s.learned, s.due, bar_w),
+            pad_left(&format!("{}/{}", s.learned, s.goals), 7),
+            count(style, s.due, 3, Style::yellow),
+            count(style, s.new_available, 3, Style::cyan),
+            style.dim(&last),
         ));
     }
     for stray in &strays {

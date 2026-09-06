@@ -1,11 +1,12 @@
 //! `reword` with no subcommand: where things stand, and what to do next.
 
-use super::{Ctx, summarize, summary_json};
+use super::{Ctx, count, summarize, summary_json};
 use crate::clock::days_between;
 use crate::clock::{ago, in_days_label};
 use crate::error::Result;
 use crate::out;
-use crate::text::{cards_come_due, pad_left, pad_right, plural, width};
+use crate::term::Style;
+use crate::text::{cards_come_due, pad_right, plural, width};
 
 pub fn run(ctx: &Ctx) -> Result<i32> {
     let store = &ctx.store;
@@ -75,8 +76,8 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
         out::println(&format!(
             "  {}  {} due  {} new   {}",
             pad_right(&s.name, name_w),
-            pad_left(&s.due.to_string(), 3),
-            pad_left(&s.new_available.to_string(), 3),
+            count(style, s.due, 3, Style::yellow),
+            count(style, s.new_available, 3, Style::cyan),
             style.dim(&last),
         ));
     }

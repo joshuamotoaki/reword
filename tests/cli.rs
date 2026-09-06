@@ -227,7 +227,7 @@ fn stats_and_optimize_speak_plainly_with_little_history() {
     assert_eq!(v["learned"], 1);
     assert_eq!(v["fsrs_parameters"]["source"], "default");
     let o = reword(&dir, &["stats"]);
-    assert!(stdout(&o).contains("Due in the next 14 days"));
+    assert!(stdout(&o).contains("Due ahead"));
     let o = reword(&dir, &["optimize"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("need 400"));
