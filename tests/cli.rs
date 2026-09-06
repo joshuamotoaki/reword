@@ -10,6 +10,7 @@ fn reword(dir: &Path, args: &[&str]) -> Output {
         .env("NO_COLOR", "1")
         .env_remove("EDITOR")
         .env_remove("VISUAL")
+        .env_remove("ZDOTDIR")
         .output()
         .expect("run reword")
 }
@@ -303,6 +304,7 @@ fn completions_do_not_touch_rc_when_not_a_tty() {
         .env("SHELL", "/bin/zsh")
         .env("REWORD_DIR", &dir)
         .env("NO_COLOR", "1")
+        .env_remove("ZDOTDIR")
         .output()
         .expect("status");
     assert!(o.status.success(), "{}", stderr(&o));
@@ -314,19 +316,27 @@ fn completions_install_appends_once() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path();
     let o = Command::new(env!("CARGO_BIN_EXE_reword"))
-        .args(["completions", "--install"])
+        .args(["completions", "zsh", "--install"])
         .env("HOME", home)
-        .env("SHELL", "/bin/zsh")
+        .env_remove("ZDOTDIR")
         .env("NO_COLOR", "1")
         .output()
         .expect("install");
     assert!(o.status.success(), "{}", stderr(&o));
-    let zshrc = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+    let zshrc_path = home.join(".zshrc");
+    assert!(
+        zshrc_path.exists(),
+        "expected {} after install; stdout: {} stderr: {}",
+        zshrc_path.display(),
+        stdout(&o),
+        stderr(&o)
+    );
+    let zshrc = std::fs::read_to_string(&zshrc_path).unwrap();
     assert!(zshrc.contains("reword completions zsh"));
     let o = Command::new(env!("CARGO_BIN_EXE_reword"))
-        .args(["completions", "--install"])
+        .args(["completions", "zsh", "--install"])
         .env("HOME", home)
-        .env("SHELL", "/bin/zsh")
+        .env_remove("ZDOTDIR")
         .env("NO_COLOR", "1")
         .output()
         .expect("install again");

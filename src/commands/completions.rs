@@ -123,6 +123,7 @@ fn rc_path(shell: Shell) -> Result<PathBuf> {
     let home = home()?;
     Ok(match shell {
         Shell::Zsh => std::env::var_os("ZDOTDIR")
+            .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .unwrap_or(home)
             .join(".zshrc"),
@@ -154,7 +155,11 @@ fn fish_path() -> Result<PathBuf> {
 }
 
 fn home() -> Result<PathBuf> {
-    std::env::home_dir().ok_or_else(|| Error::new("HOME is not set"))
+    std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(std::env::home_dir)
+        .ok_or_else(|| Error::new("HOME is not set"))
 }
 
 fn write_if_changed(path: &Path, contents: &str) -> Result<Outcome> {
