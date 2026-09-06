@@ -9,9 +9,8 @@ All data is stored in plain text files.
 If you want sync across devices, you can sync those files using git or anything.
 
 ```
- cantonese · recall                              12/28 · 6 min left
+ cantonese · recall                              12/28 · 4:18 left
  ─────────────────────────────────────────────────────────────────
- ✓ 飲 · 3d
 
      食
 
@@ -69,6 +68,8 @@ Obsidian spaced-repetition convention:
   Unicode normalization.
 - A line splits on the first `:::` if it has one, otherwise the first `::`.
 
+To have an AI write or edit a deck, paste [FOR_AI.md](FOR_AI.md).
+
 The front is the card's identity within its deck. Edit the files however you
 like; every edit has a boring, defined outcome:
 
@@ -114,8 +115,9 @@ the session ends the terminal comes back as it was, with a one-line
 summary.
 
 Sessions are bounded by time, not by a due count. `-m 5` gives you five
-minutes; when they are up you get a summary and one question, continue or
-not. What is left simply stays due.
+minutes; the header shows `m:ss` left and ticks every second. When time
+is up you get a summary and one question, continue or not. What is left
+simply stays due.
 
 `--endless` is for the days you want to keep going. No time limit, no daily
 cap on new cards, and once nothing is due it moves on to the learned cards
