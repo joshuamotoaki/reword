@@ -27,13 +27,17 @@ Homebrew (macOS and Linux):
 brew install joshuamotoaki/tap/reword
 ```
 
-From source, with a [Rust toolchain](https://rustup.rs):
+From a clone, with a [Rust toolchain](https://rustup.rs):
 
 ```bash
 git clone https://github.com/joshuamotoaki/reword
 cd reword
 cargo install --path .
 ```
+
+That builds the binary and puts `reword` on your PATH (`~/.cargo/bin`).
+Same command again after you pull to update. `cargo run -- review` works
+too, but install is the easy way to just use it.
 
 ## Quick start
 
@@ -220,6 +224,7 @@ for scripts. Exit codes: 0 ok, 1 problem, 2 usage.
 ## Development
 
 ```bash
+cargo install --path .    # reword on your PATH; run again after pulling
 cargo test
 cargo run -- --dir /tmp/reword-play init
 ```

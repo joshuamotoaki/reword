@@ -5,6 +5,14 @@ For contributors and AI agents. User-facing behavior is documented in
 
 ## Build and test
 
+To use the clone as your daily `reword` (on `PATH` via `~/.cargo/bin`):
+
+```bash
+cargo install --path .
+```
+
+Run that again after pulling. For a throwaway tree without installing:
+
 ```bash
 cargo test
 cargo run -- --dir /tmp/reword-play init
