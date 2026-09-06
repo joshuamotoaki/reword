@@ -4,12 +4,12 @@ use std::io::Write;
 
 use super::Ctx;
 use crate::cli::AddArgs;
-use crate::deck::front_is_ignored;
+use crate::deck::{Deck, front_is_ignored};
 use crate::error::{Error, Result, bail};
 use crate::out;
 use crate::store::{Store, deck_name_from_arg};
 use crate::term;
-use crate::text::front_key;
+use crate::text::{front_key, nfc};
 
 pub fn run(ctx: &Ctx, args: AddArgs) -> Result<i32> {
     let store = &ctx.store;
@@ -101,6 +101,9 @@ pub fn run(ctx: &Ctx, args: AddArgs) -> Result<i32> {
 
     let front = front_key(&front_raw);
     let back = back_raw.trim().to_string();
+    if front.is_empty() || back.is_empty() {
+        bail!("front and back cannot be empty");
+    }
     if front.contains("::") {
         bail!("the front cannot contain \"::\" (it is the card separator)");
     }
@@ -130,10 +133,26 @@ pub fn run(ctx: &Ctx, args: AddArgs) -> Result<i32> {
 
     let sep = if args.reverse { ":::" } else { "::" };
     let line = format!("{front}{sep}{back}");
-    let needs_newline = std::fs::metadata(&path)
-        .map(|m| m.len() > 0)
-        .unwrap_or(false)
-        && !std::fs::read(&path)?.ends_with(b"\n");
+    let mut text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let needs_newline = !text.is_empty() && !text.ends_with('\n');
+    if needs_newline {
+        text.push('\n');
+    }
+    text.push_str(&line);
+    text.push('\n');
+    let parsed = Deck::parse(&deck, &store.deck_label(&deck), &text);
+    if !parsed
+        .find(&front)
+        .is_some_and(|card| card.back == nfc(&back) && card.reverse == args.reverse)
+    {
+        bail!(
+            "card would not parse as entered; check separator-adjacent colons and unclosed code fences"
+        );
+    }
     let mut f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

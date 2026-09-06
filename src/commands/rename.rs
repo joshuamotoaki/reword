@@ -24,6 +24,12 @@ pub fn run(ctx: &Ctx, deck_arg: &str, old: &str, new: &str) -> Result<i32> {
     if new_key.contains("::") {
         bail!("the new front cannot contain \"::\"");
     }
+    if new_key.ends_with(':') {
+        bail!("the new front cannot end with ':' (it changes the card separator)");
+    }
+    if new_key.contains(['\n', '\r']) {
+        bail!("cards are one line each");
+    }
     if front_is_ignored(&new_key) {
         bail!(
             "the new front cannot start with \"#\" or \"```\"; the deck parser treats such lines as comments"

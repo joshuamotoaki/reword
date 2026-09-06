@@ -63,21 +63,21 @@ pub fn introduced_today(decks: &[LoadedDeck], clock: &Clock, today: Date) -> usi
 
 /// Mean review time in ms over all history, clamped to something sane.
 fn average_review_ms(decks: &[LoadedDeck]) -> u64 {
-    let mut total = 0u64;
+    let mut total = 0u128;
     let mut n = 0u64;
     for d in decks {
         for (_, _, evs) in d.ledger.iter() {
             for ev in evs {
                 if ev.elapsed_ms > 0 {
-                    total += ev.elapsed_ms;
+                    total += u128::from(ev.elapsed_ms);
                     n += 1;
                 }
             }
         }
     }
     total
-        .checked_div(n)
-        .map_or(10_000, |avg| avg.clamp(2_000, 60_000))
+        .checked_div(u128::from(n))
+        .map_or(10_000, |avg| avg.clamp(2_000, 60_000) as u64)
 }
 
 enum Candidate {
@@ -369,5 +369,19 @@ mod tests {
         );
         assert!(!p.throttled);
         assert_eq!(p.new_limit, 1);
+    }
+
+    #[test]
+    fn average_duration_handles_large_log_values() {
+        let mut rows = vec![
+            row("2026-01-01T10:00:00Z", "a", Goal::Forward, Grade::Good),
+            row("2026-01-02T10:00:00Z", "a", Goal::Forward, Grade::Good),
+        ];
+        for row in &mut rows {
+            if let RowKind::Review { elapsed_ms, .. } = &mut row.kind {
+                *elapsed_ms = u64::MAX;
+            }
+        }
+        assert_eq!(average_review_ms(&[loaded("a::answer\n", rows)]), 60_000);
     }
 }

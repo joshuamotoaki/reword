@@ -31,7 +31,10 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     }
     let mut decks = store.load_all(&names)?;
     ctx.report_warnings(&decks);
-    let settings = ctx.settings()?;
+    let mut settings = ctx.settings()?;
+    if let Some(minutes) = args.minutes {
+        settings.session_minutes = minutes.max(1);
+    }
     let model = ctx.model(&settings)?;
     let today = ctx.clock.today();
 
@@ -109,7 +112,7 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
             None => return Ok(0),
         },
     };
-    let minutes = args.minutes.unwrap_or(settings.session_minutes).max(1);
+    let minutes = settings.session_minutes;
 
     let style = ctx.term.out;
     let mut parts = vec![format!("{} due", plan.due.len())];

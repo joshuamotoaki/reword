@@ -266,3 +266,35 @@ fn edit_without_editor_names_the_file() {
     assert!(stderr(&o).contains("$EDITOR"));
     assert!(stderr(&o).contains("example.md"));
 }
+
+#[test]
+fn invalid_card_edits_leave_files_unchanged() {
+    let (_tmp, dir) = fresh();
+    reword(&dir, &["init"]);
+    let path = dir.join("decks/a.md");
+    let log_path = dir.join("decks/a.log");
+    let original = "old::answer\n";
+    let log = "2026-09-01T10:00:00Z\told\tforward\trecall\tgood\t100\n";
+    std::fs::write(&path, original).unwrap();
+    std::fs::write(&log_path, log).unwrap();
+    for args in [
+        vec!["add", "a", " ", "answer"],
+        vec!["add", "a", "new", " "],
+        vec!["add", "a", "new:", "answer"],
+        vec!["add", "a", "new", ":answer"],
+        vec!["rename", "a", "old", "new\nfront"],
+        vec!["rename", "a", "old", "new:"],
+    ] {
+        let o = reword(&dir, &args);
+        assert_eq!(o.status.code(), Some(1), "{args:?}: {}", stderr(&o));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(std::fs::read_to_string(&log_path).unwrap(), log);
+    }
+    std::fs::write(&path, "old::answer\n```rust\n").unwrap();
+    let o = reword(&dir, &["add", "a", "new", "answer"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "old::answer\n```rust\n"
+    );
+}

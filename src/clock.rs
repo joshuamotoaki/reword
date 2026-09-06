@@ -30,10 +30,14 @@ impl Clock {
     /// The study day a timestamp falls on. A 2 am session belongs to the
     /// previous calendar day, so a midnight review is one day, not two.
     pub fn study_day(&self, ts: Timestamp) -> Date {
-        let shifted = ts
-            .checked_sub(Span::new().hours(ROLLOVER_HOUR))
-            .unwrap_or(ts);
-        shifted.to_zoned(self.tz.clone()).date()
+        let local = ts.to_zoned(self.tz.clone());
+        // Compare wall-clock time: subtracting four elapsed hours moves the
+        // cutoff on days when daylight saving time starts or ends.
+        if i64::from(local.hour()) < ROLLOVER_HOUR {
+            add_days(local.date(), -1)
+        } else {
+            local.date()
+        }
     }
 
     pub fn today(&self) -> Date {
@@ -103,6 +107,25 @@ pub fn in_days_label(days: i32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rollover_stays_at_four_across_dst() {
+        let clock = Clock {
+            tz: TimeZone::get("America/Los_Angeles").unwrap(),
+        };
+        for (ts, day) in [
+            ("2026-03-08T04:00:00-07:00", "2026-03-08"),
+            ("2026-03-08T03:59:59-07:00", "2026-03-07"),
+            ("2026-11-01T03:30:00-08:00", "2026-10-31"),
+            ("2026-11-01T04:00:00-08:00", "2026-11-01"),
+        ] {
+            assert_eq!(
+                clock.study_day(parse_ts(ts).unwrap()),
+                day.parse::<Date>().unwrap(),
+                "{ts}"
+            );
+        }
+    }
 
     #[test]
     fn rollover_at_four_am() {
