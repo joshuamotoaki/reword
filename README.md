@@ -5,23 +5,14 @@
 [![GitHub release](https://img.shields.io/github/v/release/joshuamotoaki/reword)](https://github.com/joshuamotoaki/reword/releases)
 [![FSRS-6](https://img.shields.io/badge/scheduler-FSRS--6-6f42c1)](https://github.com/open-spaced-repetition/fsrs4anki)
 
+![Reword demo: a plain-text Cantonese deck, space to reveal and grade 食 (to eat), typing the answer to 飲 (to drink), and the learned cards scheduled for later.](docs/demo/demo.gif)
+
 I wanted a super simple flashcard app I could use to learn languages.
 No frills.
 
 This is completely free and runs locally on your machine.
 All data is stored in plain text files.
 If you want sync across devices, you can sync those files using git or something.
-
-```
- cantonese · recall                              12/28 · 4:18 left
- ─────────────────────────────────────────────────────────────────
-
-     食
-
-     to eat
-
- space good   a again   h hard   e easy   s skip   ← undo   q quit
-```
 
 ## Install
 
@@ -70,7 +61,7 @@ Obsidian spaced-repetition convention:
 
 - `front::back` asks front → back.
 - `front:::back` asks both ways. Each direction has its own memory.
-- ` / ` on the answer side separates alternatives for typed mode.
+- `/` on the answer side separates alternatives for typed mode.
 - Anything else is ignored: headings, prose, blank lines. A deck can be an
   ordinary Markdown note with cards in it. Lines starting with `#` and fenced
   code blocks are never cards, so `# 食::to eat` comments a card out.
@@ -86,18 +77,18 @@ To have an AI write or edit a deck, paste [FOR_AI.md](FOR_AI.md).
 The front is the card's identity within its deck. Edit the files however you
 like; every edit has a boring, defined outcome:
 
-| Edit | Effect |
-| --- | --- |
-| Add a line | New card next session. |
-| Change the back | Nothing scheduled changes. |
-| Delete a line | Card leaves the queue. Its history stays; re-adding the same front resumes it. |
-| Change the front | The old history is orphaned. Carry it over with `reword rename DECK OLD NEW`, before or after the edit. If exactly one history is orphaned and exactly one unreviewed card sits among the reviewed ones, `review` asks whether that was a rename. |
-| `::` → `:::` | The reverse side appears as a new card. |
-| `:::` → `::` | The reverse side disappears; its history is kept. |
-| Reorder, add notes, change spacing | No effect. |
-| Duplicate a front | Warning with both line numbers; the first wins. `add` refuses outright. |
-| Rename or delete a deck | Move or delete the `.md` and `.log` together. `reword check` reports a `.log` without its `.md`. |
-| Edit during a session | Safe. The session read the deck at its start and only appends to the log. |
+| Edit                               | Effect                                                                                                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a line                         | New card next session.                                                                                                                                                                                                                            |
+| Change the back                    | Nothing scheduled changes.                                                                                                                                                                                                                        |
+| Delete a line                      | Card leaves the queue. Its history stays; re-adding the same front resumes it.                                                                                                                                                                    |
+| Change the front                   | The old history is orphaned. Carry it over with `reword rename DECK OLD NEW`, before or after the edit. If exactly one history is orphaned and exactly one unreviewed card sits among the reviewed ones, `review` asks whether that was a rename. |
+| `::` → `:::`                       | The reverse side appears as a new card.                                                                                                                                                                                                           |
+| `:::` → `::`                       | The reverse side disappears; its history is kept.                                                                                                                                                                                                 |
+| Reorder, add notes, change spacing | No effect.                                                                                                                                                                                                                                        |
+| Duplicate a front                  | Warning with both line numbers; the first wins. `add` refuses outright.                                                                                                                                                                           |
+| Rename or delete a deck            | Move or delete the `.md` and `.log` together. `reword check` reports a `.log` without its `.md`.                                                                                                                                                  |
+| Edit during a session              | Safe. The session read the deck at its start and only appends to the log.                                                                                                                                                                         |
 
 `reword check` lists everything that could be off: duplicates, empty sides,
 malformed log lines, orphaned histories, stray logs.
@@ -114,7 +105,7 @@ picks recall.
 like space everywhere.
 
 **Typed**: type the answer and press enter. It is checked against the back
-and every ` / ` alternative, ignoring case and spacing. A miss shows the
+and every `/` alternative, ignoring case and spacing. A miss shows the
 expected answer; `o` counts it as a typo. An empty line reveals the answer.
 
 In both modes: `s` skips a card without grading it, `←` (or `u`) undoes the
