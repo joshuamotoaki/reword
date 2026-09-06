@@ -1,69 +1,141 @@
 # Developing reword
 
-For contributors and AI agents. User-facing behavior is documented in
-[README.md](README.md); this file covers what is not obvious from the code.
+For people (and agents) working on the code. User-facing behavior is in
+[README.md](README.md). Deck format for writing cards is in
+[FOR_AI.md](FOR_AI.md).
 
-## Build and test
+## Setup
 
-To use the clone as your daily `reword` (on `PATH` via `~/.cargo/bin`):
+Rust 2024 edition (rustc 1.85+). Install from [rustup](https://rustup.rs).
+
+```bash
+git clone https://github.com/joshuamotoaki/reword
+cd reword
+cargo test
+```
+
+The `fsrs` crate pulls in `burn`, so a clean build takes a few minutes.
+Incremental builds are fast.
+
+To put this clone on `PATH` as your daily `reword` (`~/.cargo/bin`):
 
 ```bash
 cargo install --path .
 ```
 
-Run that again after pulling. For a throwaway tree without installing:
+Run that again after pulling.
+
+## Commands
 
 ```bash
-cargo test
+cargo test                              # unit + CLI tests
+cargo test --test cli                   # just tests/cli.rs
+cargo fmt
+cargo clippy --all-targets -- -D warnings
+
 cargo run -- --dir /tmp/reword-play init
+cargo run -- --dir /tmp/reword-play add demo 食 'to eat'
 cargo run -- --dir /tmp/reword-play review
+cargo run -- --dir /tmp/reword-play --json decks
+
+cargo install --path .                  # install the binary you just built
 ```
 
-Rust 2024 edition. The `fsrs` crate pulls in `burn`, so a clean build takes
-a few minutes; incremental builds are fast. `tests/cli.rs` covers
-non-interactive behavior end to end. The interactive loop (`review`) has no
-automated test; check it in a real terminal after touching `session.rs` or
-`term.rs`.
+`--dir` (or `REWORD_DIR`) points at a throwaway data directory so you do not
+touch `~/reword`. `NO_COLOR=1` matches what the CLI tests set.
 
-## Principles
+`tests/cli.rs` covers non-interactive behavior end to end. The interactive
+loop (`review`) has no automated test; check it in a real terminal after
+touching `session.rs` or `term.rs`.
 
-These shaped every decision. Changes that break one need a good reason.
+There is no test workflow in CI yet. Run `cargo test` locally before a
+release.
 
-1. **Text is the database.** Decks are text files edited in any editor. The
-   tool never writes to a deck file during review.
-2. **History is the source of truth; memory state is derived.** FSRS state
-   is recomputed by replaying the log every run. There is no state file, no
-   cache, nothing to corrupt.
-3. **Time-bounded sessions.** You commit minutes; the planner picks what
-   fits. Overdue cards are prioritized, not counted as debt.
-4. **One mode per session.** Recall or typed, never mixed. Both feed the
-   same per-card history.
-5. **General purpose.** No language-specific rules, no per-deck defaults,
-   no assumptions about what a card contains. Numeric defaults (session
-   minutes, retention) are fine; content defaults are not.
-6. **Honest grading.** Again and Good are the default buttons. Skipping is
-   not failing. Assisted answers are not recall.
-7. **Good CLI citizen.** Follows [clig.dev](https://clig.dev): stdout for
-   data, stderr for messages, `--json` for machines, `NO_COLOR`, exit codes
-   0/1/2, no prompts when stdin is not a TTY.
-8. **Crash-only.** Every grade is appended to the log the moment it is
-   given. Ctrl-C loses nothing.
+## Release
 
-## Stack
+Releases are cut by pushing a version tag. [dist](https://github.com/axodotdev/cargo-dist)
+CI (`.github/workflows/release.yml`, generated from `dist-workspace.toml`)
+builds the binaries, creates the GitHub release, and updates the Homebrew
+formula.
 
-| Choice | Why |
-| --- | --- |
-| `clap` 4 (derive) | Help text, typo suggestions, subcommands, completions. |
-| `fsrs` 6.6.2 | The FSRS-6 code Anki ships, including the optimizer behind `reword optimize`. Scheduler-only `rs-fsrs` is the fallback if build time ever hurts. |
-| `crossterm` | Raw single-key input, colors, and the alternate screen used during `review`. Every other command is line-oriented. |
-| `ctrlc` | Restores the terminal if Ctrl-C lands during cooked-mode typed input, when raw mode is off and crossterm cannot see it. |
-| `jiff` | Local-day arithmetic with a 4 am rollover. |
-| `toml`, `serde` | `config.toml` and `params.toml`. |
+Do not publish to crates.io: the name `reword` is taken. The Cargo package
+is `reword-cli`; the binary is `reword`. Users install via Homebrew or
+`cargo install --path .` from a clone.
 
-The crates.io name `reword` is taken, so the package is `reword-cli` and the
-binary is `reword`.
+### Cut a version
 
-## Module map
+1. Bump `version` in `Cargo.toml` (semver). Refresh the lockfile so it
+   matches:
+
+   ```bash
+   cargo test
+   ```
+
+2. Commit the bump (and anything else going out):
+
+   ```bash
+   git add Cargo.toml Cargo.lock
+   git commit -m "Release 0.2.0"
+   ```
+
+3. Tag the same commit. The tag must contain the Cargo version
+   (`v0.2.0`, or `0.2.0`). `v` prefix is the usual style here.
+
+   ```bash
+   git tag v0.2.0
+   ```
+
+4. Push the commit and the tag. Pushing the tag is what starts the
+   Release workflow.
+
+   ```bash
+   git push
+   git push origin v0.2.0
+   ```
+
+5. Watch [Actions](https://github.com/joshuamotoaki/reword/actions) until
+   Release finishes. That run:
+
+   - Builds `aarch64` and `x86_64` for macOS and Linux
+   - Creates a GitHub release at `v0.2.0` with tarballs and a shell installer
+   - Commits an updated `reword` formula to
+     [joshuamotoaki/homebrew-tap](https://github.com/joshuamotoaki/homebrew-tap)
+
+   Homebrew publish needs the `HOMEBREW_TAP_TOKEN` repo secret (a PAT that
+   can push to that tap). Without it, binaries still ship; `brew upgrade`
+   will not see the new version.
+
+Optional: add a top-level `CHANGELOG.md` (or `RELEASES.md`) with a heading
+that contains the version, e.g. `# 0.2.0`. dist copies that section into
+the GitHub release notes. With no changelog it generates a generic
+announcement.
+
+Preview what the next tag would produce (needs
+[`dist`](https://opensource.axo.dev/cargo-dist/) installed):
+
+```bash
+dist plan
+```
+
+### Prereleases
+
+A tag with a prerelease suffix (`v0.2.0-alpha.1`) still builds and creates
+a GitHub prerelease. The Homebrew formula is **not** updated.
+
+### After changing dist config
+
+`release.yml` is generated. After editing `dist-workspace.toml` (targets,
+installers, tap):
+
+```bash
+dist init --yes
+git add dist-workspace.toml .github/workflows/release.yml
+git commit -m "Update dist config"
+```
+
+Do not hand-edit `release.yml`.
+
+## Layout
 
 ```
 src/
@@ -90,7 +162,18 @@ src/
   out.rs       stdout vs stderr; a closed pipe is not an error
 ```
 
-## Invariants worth knowing
+| Crate | Why |
+| --- | --- |
+| `clap` 4 (derive) | Help text, typo suggestions, subcommands, completions. |
+| `fsrs` 6.6.2 | The FSRS-6 code Anki ships, including the optimizer behind `reword optimize`. Scheduler-only `rs-fsrs` is the fallback if build time ever hurts. |
+| `crossterm` | Raw single-key input, colors, and the alternate screen used during `review`. Every other command is line-oriented. |
+| `ctrlc` | Restores the terminal if Ctrl-C lands during cooked-mode typed input, when raw mode is off and crossterm cannot see it. |
+| `jiff` | Local-day arithmetic with a 4 am rollover. |
+| `toml`, `serde` | `config.toml` and `params.toml`. |
+
+## Invariants
+
+Worth knowing before changing scheduling, logs, or the review screen.
 
 - **Card identity** is the deck plus the NFC-normalized, trimmed front.
   Changing the front orphans history; `rename` rows carry it over. A
@@ -142,15 +225,31 @@ src/
   and hard errors in `add`, so a typo never locks anyone out of reviewing.
 - **Precedence:** flags > environment (`REWORD_DIR`, `NO_COLOR`) > config.
 
-## Release
+## Principles
 
-Releases are built by [dist](https://github.com/axodotdev/cargo-dist) from
-`dist-workspace.toml` via `.github/workflows/release.yml`. Pushing a tag
-like `v0.2.0` builds macOS and Linux binaries, creates the GitHub release,
-and updates the formula in `joshuamotoaki/homebrew-tap`. Bump `version` in
-`Cargo.toml` first.
+These shaped every decision. Changes that break one need a good reason.
 
-## Deliberately not in scope
+1. **Text is the database.** Decks are text files edited in any editor. The
+   tool never writes to a deck file during review.
+2. **History is the source of truth; memory state is derived.** FSRS state
+   is recomputed by replaying the log every run. There is no state file, no
+   cache, nothing to corrupt.
+3. **Time-bounded sessions.** You commit minutes; the planner picks what
+   fits. Overdue cards are prioritized, not counted as debt.
+4. **One mode per session.** Recall or typed, never mixed. Both feed the
+   same per-card history.
+5. **General purpose.** No language-specific rules, no per-deck defaults,
+   no assumptions about what a card contains. Numeric defaults (session
+   minutes, retention) are fine; content defaults are not.
+6. **Honest grading.** Again and Good are the default buttons. Skipping is
+   not failing. Assisted answers are not recall.
+7. **Good CLI citizen.** Follows [clig.dev](https://clig.dev): stdout for
+   data, stderr for messages, `--json` for machines, `NO_COLOR`, exit codes
+   0/1/2, no prompts when stdin is not a TTY.
+8. **Crash-only.** Every grade is appended to the log the moment it is
+   given. Ctrl-C loses nothing.
+
+## Out of scope
 
 - Any GUI, web UI, or full-screen TUI.
 - Audio, images, cloze deletions, HTML in cards.
