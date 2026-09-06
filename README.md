@@ -42,7 +42,7 @@ too, but install is the easy way to just use it.
 ## Quick start
 
 ```bash
-reword init                          # creates ~/reword with an example deck
+reword init                          # creates ~/reword with a README and an example deck
 reword add cantonese 食 'to eat'      # creates decks/cantonese.md and appends a card
 reword add cantonese 飲 'to drink' -r  # -r: also ask back → front
 reword review                        # start a session
@@ -159,6 +159,7 @@ Days roll over at 4 am local time, so a late-night session is still today.
 
 ```
 ~/reword/                 override with --dir or $REWORD_DIR
+  README.md               how to add decks by hand; .md and .log
   config.toml             settings; every key optional
   params.toml             written by `reword optimize`
   decks/

@@ -20,11 +20,83 @@ front:::back
 
 const GITATTRIBUTES_LINE: &str = "*.log merge=union";
 
+const README: &str = "\
+# Reword
+
+This folder is the database. Decks are ordinary Markdown files. Review
+history lives next to them. Sync the whole directory if you want the
+same cards on another machine.
+
+## Layout
+
+```
+.
+  README.md          this file
+  config.toml        settings; every key optional
+  params.toml        written by `reword optimize`
+  decks/
+    cantonese.md     the cards
+    cantonese.log    that deck's review log, append-only
+  .gitattributes     lets git merge logs from two machines
+```
+
+A deck is `decks/<name>.md`. The name is the filename without `.md`
+(no slashes, no leading dot). Its log is `decks/<name>.log`.
+
+## Adding a deck by hand
+
+Create a `.md` file in `decks/`. That is enough. Reword will see it
+the next time you run `reword`, `reword decks`, or `reword review`.
+
+```
+decks/cantonese.md
+```
+
+```
+# Cantonese, food
+食::to eat
+飲:::to drink
+唔該::excuse me / thank you
+```
+
+One card per line:
+
+- `front::back` asks front → back.
+- `front:::back` asks both ways. Each direction has its own memory.
+- ` / ` on the answer side separates alternatives for typed mode.
+- Headings, prose, and blank lines are ignored. A line starting with
+  `#` that is also a card (`# 食::to eat`) comments that card out.
+
+Or let the tool do it: `reword add cantonese 食 'to eat'` creates the
+file if needed and appends a card. `-r` writes `:::`. `reword edit`
+opens a deck in `$EDITOR`.
+
+The front is the card's identity in that deck. Keep fronts unique.
+Changing a front orphans its history; `reword rename DECK OLD NEW`
+carries the log over.
+
+## Logs
+
+The matching `.log` is created the first time you review that deck.
+Do not invent or edit logs. Every grade is appended as a row; memory
+is recomputed from the file each run, so there is nothing else to
+keep in sync.
+
+If you rename or delete a deck, move or delete the `.md` and `.log`
+together. `reword check` reports a `.log` without its `.md`.
+";
+
 pub fn run(ctx: &Ctx) -> Result<i32> {
     let store = &ctx.store;
     let existed = store.exists();
     std::fs::create_dir_all(store.decks_dir())?;
     let mut created = Vec::new();
+
+    let readme = store.root.join("README.md");
+    if !readme.exists() {
+        std::fs::write(&readme, README)?;
+        created.push("README.md           how decks and logs are laid out");
+    }
 
     let config = store.config_path();
     if !config.exists() {

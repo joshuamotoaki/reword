@@ -64,7 +64,11 @@ fn init_is_idempotent_and_creates_the_layout() {
     let o = reword(&dir, &["init"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(dir.join("config.toml").is_file());
+    assert!(dir.join("README.md").is_file());
     assert!(dir.join("decks/example.md").is_file());
+    let readme = std::fs::read_to_string(dir.join("README.md")).unwrap();
+    assert!(readme.contains("decks/<name>.md"));
+    assert!(readme.contains("decks/<name>.log"));
     assert_eq!(
         std::fs::read_to_string(dir.join(".gitattributes")).unwrap(),
         "*.log merge=union\n"
