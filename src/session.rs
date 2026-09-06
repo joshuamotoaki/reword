@@ -81,6 +81,11 @@ fn same(a: &Item, b: &Item) -> bool {
     a.deck == b.deck && a.card == b.card && a.goal == b.goal
 }
 
+/// `0:05`, `3:42`, `90:00`.
+fn clock_label(secs: u64) -> String {
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
 impl Queue {
     fn new_allowance(&self) -> usize {
         self.new_limit
@@ -404,6 +409,16 @@ impl Session<'_> {
         term::hints(self.term, &pairs)
     }
 
+    fn await_key(&self) -> Result<Key> {
+        Ok(term::read_key_ticking(self.start, || {
+            self.screen.draw_header(
+                self.term,
+                &format!("{} · {}", self.label, self.mode),
+                &self.progress(),
+            );
+        })?)
+    }
+
     fn present(&self, item: &Item, stage: &Stage, can_undo: bool) -> Result<Step> {
         match self.mode {
             Mode::Recall => self.present_recall(item, stage, can_undo),
@@ -427,7 +442,7 @@ impl Session<'_> {
             );
             self.draw(&body, &footer, None);
             loop {
-                match term::read_key()? {
+                match self.await_key()? {
                     Key::Space | Key::Enter => break,
                     Key::Char('s') => return Ok(Step::Skipped),
                     Key::Char('q') | Key::Esc | Key::CtrlC | Key::CtrlD => return Ok(Step::Quit),
@@ -453,7 +468,7 @@ impl Session<'_> {
         );
         self.draw(&body, &footer, None);
         loop {
-            let grade = match term::read_key()? {
+            let grade = match self.await_key()? {
                 Key::Space | Key::Enter | Key::Char('g') | Key::Char('3') => Grade::Good,
                 Key::Char('a') | Key::Char('1') => Grade::Again,
                 Key::Char('h') | Key::Char('2') => Grade::Hard,
@@ -529,7 +544,7 @@ impl Session<'_> {
                 );
                 self.draw(&body, &footer, None);
                 loop {
-                    match term::read_key()? {
+                    match self.await_key()? {
                         Key::Enter | Key::Space | Key::Char('a') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Again,
@@ -580,7 +595,7 @@ impl Session<'_> {
                 );
                 self.draw(&body, &footer, None);
                 loop {
-                    match term::read_key()? {
+                    match self.await_key()? {
                         Key::Enter | Key::Space | Key::Char('g') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Good,
@@ -626,7 +641,7 @@ impl Session<'_> {
                 );
                 self.draw(&body, &footer, None);
                 loop {
-                    match term::read_key()? {
+                    match self.await_key()? {
                         Key::Enter | Key::Space | Key::Char('a') => {
                             return Ok(Step::Graded {
                                 grade: Grade::Again,
@@ -745,18 +760,14 @@ impl Session<'_> {
     fn progress(&self) -> String {
         let done = self.summary.reviews + self.summary.skipped;
         if self.endless {
-            let mins = self.start.elapsed().as_secs() / 60;
-            return format!("{done} done · {mins} min");
+            return format!(
+                "{done} done · {}",
+                clock_label(self.start.elapsed().as_secs())
+            );
         }
         let total = done + self.queue.remaining();
-        let left = self.budget.saturating_sub(self.start.elapsed());
-        let mins = left.as_secs().div_ceil(60);
-        let time = if mins == 0 {
-            "time's up".to_string()
-        } else {
-            format!("{mins} min left")
-        };
-        format!("{done}/{total} · {time}")
+        let left = self.budget.saturating_sub(self.start.elapsed()).as_secs();
+        format!("{done}/{total} · {} left", clock_label(left))
     }
 
     /// Re-queue the session's cards, weakest first, so `--endless` can loop.
@@ -804,7 +815,7 @@ impl Session<'_> {
         ];
         let footer = self.hints(&[("y", "continue"), ("any other key", "finish")], false);
         self.draw(&body, &footer, None);
-        let key = term::read_key()?;
+        let key = self.await_key()?;
         if matches!(key, Key::Char('y') | Key::Char('Y')) {
             self.budget += Duration::from_secs(u64::from(self.minutes) * 60);
             Ok(false)
@@ -949,5 +960,13 @@ mod tests {
         q.due.push_back(first.clone());
         q.withdraw_all(&first);
         assert_eq!(drain(&mut q), vec![1, 100]);
+    }
+
+    #[test]
+    fn clock_label_is_m_ss() {
+        assert_eq!(clock_label(0), "0:00");
+        assert_eq!(clock_label(5), "0:05");
+        assert_eq!(clock_label(75), "1:15");
+        assert_eq!(clock_label(3600), "60:00");
     }
 }

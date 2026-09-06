@@ -3,6 +3,7 @@
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -193,6 +194,30 @@ impl Screen {
         }
         let _ = out.flush();
     }
+
+    /// Rewrite the header clock without clearing the rest of the frame.
+    pub fn draw_header(&self, term: &Term, left: &str, right: &str) {
+        let (w, _) = term.size();
+        let style = term.out;
+        let gap = w
+            .saturating_sub(2 + text::width(left) + text::width(right))
+            .max(1);
+        let mut out = io::stdout().lock();
+        let _ = queue!(
+            out,
+            cursor::MoveTo(0, 0),
+            terminal::Clear(terminal::ClearType::CurrentLine)
+        );
+        let _ = write!(
+            out,
+            " {}{}{}",
+            style.bold(left),
+            " ".repeat(gap),
+            style.dim(right)
+        );
+        let _ = queue!(out, cursor::Hide);
+        let _ = out.flush();
+    }
 }
 
 /// One review frame. `left` and `right` are plain header text; `body`
@@ -252,30 +277,57 @@ impl Drop for RawGuard {
     }
 }
 
+fn decode_key(k: event::KeyEvent) -> Option<Key> {
+    if k.kind == KeyEventKind::Release {
+        return None;
+    }
+    let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    Some(match k.code {
+        KeyCode::Char('c') if ctrl => Key::CtrlC,
+        KeyCode::Char('d') if ctrl => Key::CtrlD,
+        KeyCode::Char(' ') => Key::Space,
+        KeyCode::Char(c) => Key::Char(c),
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Esc => Key::Esc,
+        _ => Key::Other,
+    })
+}
+
+fn until_next_second(anchor: Instant) -> Duration {
+    let nanos = u64::from(anchor.elapsed().subsec_nanos());
+    Duration::from_nanos((1_000_000_000 - nanos).max(1_000_000))
+}
+
 /// Read one key press. Raw mode is enabled only for the duration of the read,
 /// so cooked-mode line input (and IME composition) works everywhere else.
 pub fn read_key() -> io::Result<Key> {
     let _guard = RawGuard::enable()?;
     loop {
-        if let Event::Key(k) = event::read()? {
-            if k.kind == KeyEventKind::Release {
-                continue;
+        if let Event::Key(k) = event::read()?
+            && let Some(key) = decode_key(k)
+        {
+            return Ok(key);
+        }
+    }
+}
+
+/// Like `read_key`, but call `on_tick` as each second of `anchor` elapses.
+pub fn read_key_ticking(anchor: Instant, mut on_tick: impl FnMut()) -> io::Result<Key> {
+    let _guard = RawGuard::enable()?;
+    loop {
+        if event::poll(until_next_second(anchor))? {
+            if let Event::Key(k) = event::read()?
+                && let Some(key) = decode_key(k)
+            {
+                return Ok(key);
             }
-            let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-            return Ok(match k.code {
-                KeyCode::Char('c') if ctrl => Key::CtrlC,
-                KeyCode::Char('d') if ctrl => Key::CtrlD,
-                KeyCode::Char(' ') => Key::Space,
-                KeyCode::Char(c) => Key::Char(c),
-                KeyCode::Enter => Key::Enter,
-                KeyCode::Left => Key::Left,
-                KeyCode::Right => Key::Right,
-                KeyCode::Up => Key::Up,
-                KeyCode::Down => Key::Down,
-                KeyCode::Backspace => Key::Backspace,
-                KeyCode::Esc => Key::Esc,
-                _ => Key::Other,
-            });
+        } else {
+            on_tick();
         }
     }
 }

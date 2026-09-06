@@ -112,10 +112,13 @@ src/
   mode is only for single-key prompts.
 - **The review screen** redraws a whole frame per state on the alternate
   screen: header (deck · mode, progress), rule, body from row 3 (front in
-  bold, answer in cyan), footer keymap on the last row. Nothing is
-  appended, so the scrollback only gets the summary printed after the
-  screen is left. Colors carry roles only: green good, red again, cyan
-  answer, dim everything secondary. Layout must still work with `NO_COLOR`.
+  bold, answer in cyan), footer keymap on the last row. The header clock
+  is `m:ss` and is rewritten in place each second while waiting for a
+  key. Typed-answer entry is still a cooked line (IME), so the clock
+  pauses until enter. Nothing is appended, so the scrollback only gets
+  the summary printed after the screen is left. Colors carry roles only:
+  green good, red again, cyan answer, dim everything secondary. Layout
+  must still work with `NO_COLOR`.
 - **Deck parse problems** are warnings in `review` (the line is skipped)
   and hard errors in `add`, so a typo never locks anyone out of reviewing.
 - **Precedence:** flags > environment (`REWORD_DIR`, `NO_COLOR`) > config.
