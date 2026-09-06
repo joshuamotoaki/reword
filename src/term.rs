@@ -16,6 +16,10 @@ pub struct Style {
 }
 
 impl Style {
+    /// Any SGR code sequence, e.g. `"1;36"` for bold cyan.
+    pub fn sgr(self, code: &str, s: &str) -> String {
+        self.paint(code, s)
+    }
     fn paint(self, code: &str, s: &str) -> String {
         if self.on {
             format!("\x1b[{code}m{s}\x1b[0m")
@@ -40,6 +44,21 @@ impl Style {
     }
     pub fn cyan(self, s: &str) -> String {
         self.paint("36", s)
+    }
+    pub fn magenta(self, s: &str) -> String {
+        self.paint("35", s)
+    }
+    /// A word with a cyan → violet gradient across its characters.
+    pub fn gradient(self, s: &str) -> String {
+        const RAMP: [u8; 6] = [51, 45, 39, 69, 99, 135];
+        let n = s.chars().count().max(1);
+        s.chars()
+            .enumerate()
+            .map(|(i, ch)| {
+                let idx = i * (RAMP.len() - 1) / (n - 1).max(1);
+                self.paint(&format!("1;38;5;{}", RAMP[idx]), &ch.to_string())
+            })
+            .collect()
     }
 }
 
