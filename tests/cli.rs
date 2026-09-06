@@ -108,6 +108,13 @@ fn add_creates_decks_and_rejects_duplicates_without_input() {
     let o = reword(&dir, &["add", "cantonese", "a::b", "c"]);
     assert_eq!(o.status.code(), Some(1));
 
+    let o = reword(&dir, &["add", "cantonese", "#tag", "c"]);
+    assert_eq!(o.status.code(), Some(1), "a # front would be a comment");
+    assert!(stderr(&o).contains("cannot start with"));
+    let o = reword(&dir, &["rename", "cantonese", "食", "```"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("cannot start with"));
+
     let o = reword(&dir, &["add", "cantonese"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("no front given"));

@@ -3,6 +3,7 @@
 //! ordinary Markdown note. Lines starting with `#` (headings, comments) and
 //! fenced code blocks are never cards, so `# 食::to eat` comments a card out.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::path::Path;
@@ -70,10 +71,19 @@ pub fn split_card(line: &str) -> Option<(&str, &str, bool)> {
     }
 }
 
+/// Would a line beginning with this front be ignored by the parser? Fronts
+/// that start with `#` or a code fence can never become cards, so `add` and
+/// `rename` refuse them instead of writing a line that silently disappears.
+pub fn front_is_ignored(front: &str) -> bool {
+    let f = front.trim_start();
+    f.starts_with('#') || f.starts_with("```")
+}
+
 impl Deck {
     /// `file` is how the deck is named in messages, e.g. `decks/cantonese.md`.
     pub fn parse(name: &str, file: &str, text: &str) -> Deck {
         let mut cards: Vec<Card> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
         let mut warnings = Vec::new();
         let mut in_fence = false;
 
@@ -83,7 +93,7 @@ impl Deck {
                 in_fence = !in_fence;
                 continue;
             }
-            if in_fence || raw.trim_start().starts_with('#') {
+            if in_fence || front_is_ignored(raw) {
                 continue;
             }
             let Some((front_raw, back_raw, reverse)) = split_card(raw) else {
@@ -107,18 +117,18 @@ impl Deck {
                 });
                 continue;
             }
-            if let Some(first) = cards.iter().find(|c| c.front == front) {
+            if let Some(&first_line) = seen.get(&front) {
                 warnings.push(Warning {
                     file: file.to_string(),
                     line: line_no,
                     message: format!(
-                        "duplicate front \"{front}\" (first seen on line {}); using line {}. \
-                         Merge the backs or disambiguate the front.",
-                        first.line, first.line
+                        "duplicate front \"{front}\" (first seen on line {first_line}); using line \
+                         {first_line}. Merge the backs or disambiguate the front."
                     ),
                 });
                 continue;
             }
+            seen.insert(front.clone(), line_no);
             cards.push(Card {
                 front,
                 back,
@@ -207,6 +217,15 @@ mod tests {
         let d = parse("```\nstd::io\n```\n# heading::not a card\n  # commented::out\nreal::card\n");
         assert_eq!(d.cards.len(), 1);
         assert_eq!(d.cards[0].front, "real");
+    }
+
+    #[test]
+    fn comment_like_fronts_are_refused_up_front() {
+        assert!(front_is_ignored("#tag"));
+        assert!(front_is_ignored("  # spaced"));
+        assert!(front_is_ignored("```rust"));
+        assert!(!front_is_ignored("C# language"));
+        assert!(!front_is_ignored("plain"));
     }
 
     #[test]

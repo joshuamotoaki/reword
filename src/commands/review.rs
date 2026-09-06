@@ -1,5 +1,7 @@
 //! `reword review [DECK...]`: plan a session and run it.
 
+use std::io::Write;
+
 use super::Ctx;
 use crate::cli::ReviewArgs;
 use crate::clock::{days_between, in_days_label};
@@ -42,7 +44,7 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         let (ledger, _) = store.load_ledger(other)?;
         introduced += ledger
             .iter()
-            .filter(|(_, evs)| ctx.clock.study_day(evs[0].ts) == today)
+            .filter(|(_, _, evs)| ctx.clock.study_day(evs[0].ts) == today)
             .count();
     }
 
@@ -102,7 +104,10 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         (true, _, _) => Mode::Typed,
         (_, true, _) => Mode::Recall,
         (_, _, Some(m)) => m,
-        _ => ask_mode(&decks)?.ok_or_else(|| Error::new("no mode chosen"))?,
+        _ => match ask_mode(&decks)? {
+            Some(m) => m,
+            None => return Ok(0),
+        },
     };
     let minutes = args.minutes.unwrap_or(settings.session_minutes).max(1);
 
@@ -184,7 +189,6 @@ fn ask_mode(decks: &[LoadedDeck]) -> Result<Option<Mode>> {
         None => String::new(),
     };
     print!("Mode: [r]ecall or [t]yped?{suffix} ");
-    use std::io::Write;
     let _ = std::io::stdout().flush();
     loop {
         let key = term::read_key()?;

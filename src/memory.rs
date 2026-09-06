@@ -109,7 +109,7 @@ impl Model {
     pub fn training_items(ledgers: &[&Ledger], clock: &Clock) -> Vec<FSRSItem> {
         let mut stamped: Vec<(Timestamp, FSRSItem)> = Vec::new();
         for ledger in ledgers {
-            for (_, events) in ledger.iter() {
+            for (_, _, events) in ledger.iter() {
                 let full = Self::item(events, clock);
                 for (idx, review) in full.reviews.iter().enumerate().skip(1) {
                     if review.delta_t == 0 {

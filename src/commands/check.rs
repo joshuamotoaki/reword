@@ -24,14 +24,13 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
         }
         let ledger = &loaded.ledger;
         let mut orphans: Vec<(String, Goal, usize)> = Vec::new();
-        for (key, evs) in ledger.iter() {
-            let (front, goal) = key;
-            let present = match loaded.deck.find(front) {
-                Some(card) => *goal == Goal::Forward || card.reverse,
-                None => false,
-            };
+        for (front, goal, evs) in ledger.iter() {
+            let present = loaded
+                .deck
+                .find(front)
+                .is_some_and(|card| goal == Goal::Forward || card.reverse);
             if !present {
-                orphans.push((front.clone(), *goal, evs.len()));
+                orphans.push((front.to_string(), goal, evs.len()));
             }
         }
         orphans.sort();

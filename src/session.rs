@@ -2,6 +2,7 @@
 //! undo as an appended row, time-bounded with an optional continue.
 
 use std::collections::{HashMap, VecDeque};
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 use crate::clock::{Clock, interval_label};
@@ -167,12 +168,13 @@ struct Session<'a> {
     minutes: u32,
     multi: bool,
     queue: Queue,
-    pool: usize,
     start: Instant,
     budget: Duration,
     done: Vec<Done>,
     session_events: HashMap<(usize, String, Goal), Vec<ReviewEvent>>,
     summary: Summary,
+    /// The time-up prompt already printed the summary line.
+    summary_shown: bool,
 }
 
 pub fn run(
@@ -193,7 +195,6 @@ pub fn run(
         shown: 0,
         since_new: 0,
     };
-    let pool = queue.remaining();
     let mut s = Session {
         store,
         decks,
@@ -204,12 +205,12 @@ pub fn run(
         minutes: opts.minutes,
         multi: decks.len() > 1,
         queue,
-        pool,
         start: Instant::now(),
         budget: Duration::from_secs(u64::from(opts.minutes) * 60),
         done: Vec::new(),
         session_events: HashMap::new(),
         summary: Summary::default(),
+        summary_shown: false,
     };
 
     if s.mode == Mode::Typed {
@@ -621,8 +622,12 @@ impl Session<'_> {
         Ok(())
     }
 
+    /// "done/total": cards graded or skipped so far over what the session
+    /// still holds. A card graded Again rejoins the queue, so the total grows
+    /// rather than the count going backwards.
     fn progress(&self) -> String {
-        let done = self.pool.saturating_sub(self.queue.remaining());
+        let done = self.summary.reviews + self.summary.skipped;
+        let total = done + self.queue.remaining();
         let left = self.budget.saturating_sub(self.start.elapsed());
         let mins = left.as_secs().div_ceil(60);
         let time = if mins == 0 {
@@ -630,7 +635,7 @@ impl Session<'_> {
         } else {
             format!("{mins} min left")
         };
-        format!("{done}/{} · {time}", self.pool)
+        format!("{done}/{total} · {time}")
     }
 
     fn print_result(&self, item: &Item, grade: Grade) {
@@ -684,7 +689,6 @@ impl Session<'_> {
             plural(self.minutes as usize, "minute")
         );
         print!("{prompt}");
-        use std::io::Write;
         let _ = std::io::stdout().flush();
         let key = term::read_key()?;
         term::clear_line();
@@ -692,6 +696,7 @@ impl Session<'_> {
             self.budget += Duration::from_secs(u64::from(self.minutes) * 60);
             Ok(false)
         } else {
+            self.summary_shown = true;
             Ok(true)
         }
     }
@@ -728,8 +733,10 @@ impl Session<'_> {
     fn finish(mut self) -> Result<Summary> {
         self.summary.secs = self.start.elapsed().as_secs();
         self.summary.remaining = self.queue.remaining();
-        println!();
-        println!("{}", self.term.out.bold(&self.summary_line()));
+        if !self.summary_shown {
+            println!();
+            println!("{}", self.term.out.bold(&self.summary_line()));
+        }
         Ok(self.summary)
     }
 }

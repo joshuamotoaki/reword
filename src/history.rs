@@ -2,7 +2,7 @@
 //! per-card review histories. History is the source of truth; memory state
 //! is derived from it.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -186,13 +186,15 @@ pub fn load(path: &Path, file: &str) -> io::Result<(Vec<Row>, Vec<Warning>)> {
 /// Append one row. Creates the file if needed and repairs a missing trailing
 /// newline so a hand-edited log never swallows the next row.
 pub fn append(path: &Path, row: &Row) -> io::Result<()> {
-    let mut f = OpenOptions::new().create(true).append(true).open(path)?;
-    let len = f.metadata()?.len();
-    if len > 0 {
-        let mut r = File::open(path)?;
-        r.seek(SeekFrom::End(-1))?;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    if f.metadata()?.len() > 0 {
+        f.seek(SeekFrom::End(-1))?;
         let mut last = [0u8; 1];
-        r.read_exact(&mut last)?;
+        f.read_exact(&mut last)?;
         if last[0] != b'\n' {
             f.write_all(b"\n")?;
         }
@@ -210,8 +212,6 @@ pub struct ReviewEvent {
     pub elapsed_ms: u64,
 }
 
-pub type Key = (String, Goal);
-
 #[derive(Clone, Debug)]
 enum Entry {
     Review(ReviewEvent),
@@ -227,12 +227,13 @@ impl Entry {
     }
 }
 
-/// The replayed history of one deck: surviving reviews per (front, goal).
+/// The replayed history of one deck: surviving reviews per front, one slot
+/// per goal (see `Goal::index`). Fronts with no surviving review have no entry.
 #[derive(Default, Debug, Clone)]
 pub struct Ledger {
-    reviews: HashMap<Key, Vec<ReviewEvent>>,
-    /// Fronts that had any surviving review or skip.
-    fronts: BTreeSet<String>,
+    reviews: HashMap<String, [Vec<ReviewEvent>; 2]>,
+    /// Time of the most recent review or skip. Rename and undo rows are
+    /// bookkeeping, not study, and do not count.
     pub last_activity: Option<Timestamp>,
     pub last_mode: Option<Mode>,
 }
@@ -244,11 +245,10 @@ impl Ledger {
         let mut rows: Vec<&Row> = rows.iter().collect();
         rows.sort_by_key(|r| r.ts);
 
-        let mut entries: HashMap<Key, Vec<Entry>> = HashMap::new();
+        let mut entries: HashMap<(String, Goal), Vec<Entry>> = HashMap::new();
         let mut last_activity = None;
         let mut last_mode = None;
         for row in &rows {
-            last_activity = Some(row.ts);
             match &row.kind {
                 RowKind::Review {
                     goal,
@@ -257,6 +257,7 @@ impl Ledger {
                     elapsed_ms,
                     ..
                 } => {
+                    last_activity = Some(row.ts);
                     last_mode = Some(*mode);
                     entries
                         .entry((row.front.clone(), *goal))
@@ -269,6 +270,7 @@ impl Ledger {
                         }));
                 }
                 RowKind::Skip { goal, mode, .. } => {
+                    last_activity = Some(row.ts);
                     last_mode = Some(*mode);
                     entries
                         .entry((row.front.clone(), *goal))
@@ -292,13 +294,8 @@ impl Ledger {
             }
         }
 
-        let mut reviews: HashMap<Key, Vec<ReviewEvent>> = HashMap::new();
-        let mut fronts = BTreeSet::new();
-        for (key, list) in entries {
-            if list.is_empty() {
-                continue;
-            }
-            fronts.insert(key.0.clone());
+        let mut reviews: HashMap<String, [Vec<ReviewEvent>; 2]> = HashMap::new();
+        for ((front, goal), list) in entries {
             let evs: Vec<ReviewEvent> = list
                 .into_iter()
                 .filter_map(|e| match e {
@@ -307,12 +304,11 @@ impl Ledger {
                 })
                 .collect();
             if !evs.is_empty() {
-                reviews.insert(key, evs);
+                reviews.entry(front).or_default()[goal.index()] = evs;
             }
         }
         Ledger {
             reviews,
-            fronts,
             last_activity,
             last_mode,
         }
@@ -320,18 +316,26 @@ impl Ledger {
 
     pub fn reviews(&self, front: &str, goal: Goal) -> &[ReviewEvent] {
         self.reviews
-            .get(&(front.to_string(), goal))
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
+            .get(front)
+            .map_or(&[], |slots| slots[goal.index()].as_slice())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Key, &Vec<ReviewEvent>)> {
-        self.reviews.iter()
+    /// Every (front, goal) with surviving reviews, in no particular order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, Goal, &[ReviewEvent])> {
+        self.reviews.iter().flat_map(|(front, slots)| {
+            [Goal::Forward, Goal::Reverse]
+                .into_iter()
+                .filter_map(move |goal| {
+                    let evs = &slots[goal.index()];
+                    (!evs.is_empty()).then_some((front.as_str(), goal, evs.as_slice()))
+                })
+        })
     }
 
-    /// Fronts with any history at all, for orphan detection.
+    /// Fronts with surviving reviews, for orphan detection. Matches what
+    /// `iter` reports, so `check` and the rename prompt agree.
     pub fn fronts(&self) -> impl Iterator<Item = &str> {
-        self.fronts.iter().map(|s| s.as_str())
+        self.reviews.keys().map(String::as_str)
     }
 }
 
@@ -452,6 +456,41 @@ mod tests {
         assert_eq!(evs.len(), 2);
         assert_eq!(evs[0].grade, Grade::Good);
         assert_eq!(evs[1].grade, Grade::Again);
+        assert_eq!(ledger.fronts().collect::<Vec<_>>(), vec!["new"]);
+        assert_eq!(ledger.iter().count(), 1);
+        assert_eq!(
+            ledger.last_activity,
+            Some(ts("2026-09-07T02:11:09Z")),
+            "a rename row is not study activity"
+        );
+    }
+
+    #[test]
+    fn skip_only_and_fully_undone_fronts_have_no_history() {
+        let rows = vec![
+            Row {
+                ts: ts("2026-09-06T02:12:00Z"),
+                front: "skipped".into(),
+                kind: RowKind::Skip {
+                    goal: Goal::Forward,
+                    mode: Mode::Recall,
+                    elapsed_ms: 5,
+                },
+            },
+            review("2026-09-06T02:13:00Z", "undone", Grade::Good),
+            Row {
+                ts: ts("2026-09-06T02:13:01Z"),
+                front: "undone".into(),
+                kind: RowKind::Undo {
+                    goal: Goal::Forward,
+                    mode: Mode::Recall,
+                },
+            },
+        ];
+        let ledger = Ledger::replay(&rows);
+        assert_eq!(ledger.fronts().count(), 0);
+        assert_eq!(ledger.iter().count(), 0);
+        assert_eq!(ledger.last_activity, Some(ts("2026-09-06T02:13:00Z")));
     }
 
     #[test]

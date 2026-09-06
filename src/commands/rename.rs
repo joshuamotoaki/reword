@@ -1,7 +1,7 @@
 //! `reword rename DECK OLD NEW`: change a front and carry its history along.
 
 use super::Ctx;
-use crate::deck::split_card;
+use crate::deck::{front_is_ignored, split_card};
 use crate::error::{Error, Result, bail};
 use crate::history::{Row, RowKind};
 use crate::out;
@@ -23,6 +23,11 @@ pub fn run(ctx: &Ctx, deck_arg: &str, old: &str, new: &str) -> Result<i32> {
     }
     if new_key.contains("::") {
         bail!("the new front cannot contain \"::\"");
+    }
+    if front_is_ignored(&new_key) {
+        bail!(
+            "the new front cannot start with \"#\" or \"```\"; the deck parser treats such lines as comments"
+        );
     }
 
     let in_deck_old = loaded.deck.find(&old_key).cloned();

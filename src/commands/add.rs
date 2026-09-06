@@ -4,6 +4,7 @@ use std::io::Write;
 
 use super::Ctx;
 use crate::cli::AddArgs;
+use crate::deck::front_is_ignored;
 use crate::error::{Error, Result, bail};
 use crate::out;
 use crate::store::{Store, deck_name_from_arg};
@@ -102,6 +103,11 @@ pub fn run(ctx: &Ctx, args: AddArgs) -> Result<i32> {
     let back = back_raw.trim().to_string();
     if front.contains("::") {
         bail!("the front cannot contain \"::\" (it is the card separator)");
+    }
+    if front_is_ignored(&front) {
+        bail!(
+            "the front cannot start with \"#\" or \"```\"; the deck parser treats such lines as comments"
+        );
     }
     if !args.reverse && back.contains(":::") {
         bail!("a \"::\" card's back cannot contain \":::\"; use --reverse or rephrase");

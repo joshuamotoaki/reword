@@ -57,7 +57,7 @@ pub fn introduced_today(decks: &[LoadedDeck], clock: &Clock, today: Date) -> usi
     decks
         .iter()
         .flat_map(|d| d.ledger.iter())
-        .filter(|(_, evs)| clock.study_day(evs[0].ts) == today)
+        .filter(|(_, _, evs)| clock.study_day(evs[0].ts) == today)
         .count()
 }
 
@@ -66,7 +66,7 @@ fn average_review_ms(decks: &[LoadedDeck]) -> u64 {
     let mut total = 0u64;
     let mut n = 0u64;
     for d in decks {
-        for (_, evs) in d.ledger.iter() {
+        for (_, _, evs) in d.ledger.iter() {
             for ev in evs {
                 if ev.elapsed_ms > 0 {
                     total += ev.elapsed_ms;

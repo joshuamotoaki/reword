@@ -26,6 +26,14 @@ impl Goal {
             _ => None,
         }
     }
+
+    /// Slot in a per-goal pair: forward first, reverse second.
+    pub fn index(self) -> usize {
+        match self {
+            Goal::Forward => 0,
+            Goal::Reverse => 1,
+        }
+    }
 }
 
 impl fmt::Display for Goal {

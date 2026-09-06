@@ -1,6 +1,6 @@
 //! `reword stats [DECK...]`: retention, pace, and a 14-day forecast.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use super::{Ctx, summarize};
 use crate::clock::{Clock, days_between};
@@ -49,15 +49,15 @@ fn compute(decks: &[LoadedDeck], model: &Model, clock: &Clock) -> Stats {
         review_days: 0,
     };
     let mut reviews_14d = 0usize;
-    let mut days: BTreeMap<jiff::civil::Date, ()> = BTreeMap::new();
+    let mut days = BTreeSet::new();
     for d in decks {
-        for (_, evs) in d.ledger.iter() {
+        for (_, _, evs) in d.ledger.iter() {
             let mut prev_day = None;
             for ev in evs {
                 s.reviews_total += 1;
                 let age = now.duration_since(ev.ts).as_secs();
                 let day = clock.study_day(ev.ts);
-                days.insert(day, ());
+                days.insert(day);
                 if age <= 7 * 86_400 {
                     s.reviews_7d += 1;
                 }
