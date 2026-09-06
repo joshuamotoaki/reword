@@ -1,6 +1,6 @@
 //! `reword` with no subcommand: where things stand, and what to do next.
 
-use super::{Ctx, count, progress_bar, summarize, summary_json};
+use super::{Ctx, count, leech_json, leeches, progress_bar, summarize, summary_json};
 use crate::clock::{add_days, ago, days_between, in_days_label};
 use crate::error::Result;
 use crate::out;
@@ -37,6 +37,7 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
     let total_cards: usize = summaries.iter().map(|s| s.cards).sum();
     let total_due: usize = summaries.iter().map(|s| s.due).sum();
     let total_new: usize = summaries.iter().map(|s| s.new_available).sum();
+    let worst = leeches(&decks);
 
     if ctx.json {
         out::json(&serde_json::json!({
@@ -45,6 +46,7 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
             "cards": total_cards,
             "due": total_due,
             "new": total_new,
+            "leeches": leech_json(&worst),
             "decks": summaries.iter().map(|s| summary_json(s, now)).collect::<Vec<_>>(),
         }));
         return Ok(0);
@@ -126,6 +128,21 @@ pub fn run(ctx: &Ctx) -> Result<i32> {
         pad_right("today", 9),
         today_parts.join(" · ")
     ));
+    if !worst.is_empty() {
+        let multi = decks.len() > 1;
+        let names: Vec<String> = worst
+            .iter()
+            .map(|l| {
+                let p = crate::text::truncate(&l.prompt, 18);
+                if multi { format!("{} {p}", l.deck) } else { p }
+            })
+            .collect();
+        out::println(&format!(
+            " {}  {}",
+            pad_right("leeches", 9),
+            style.dim(&names.join(" · "))
+        ));
+    }
     out::println("");
 
     let name_w = summaries.iter().map(|s| width(&s.name)).max().unwrap_or(4);

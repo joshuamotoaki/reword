@@ -20,6 +20,8 @@ pub struct Card {
     pub reverse: bool,
     /// 1-based line number in the deck file.
     pub line: usize,
+    /// Open ATX headings above this card, outermost first.
+    pub headings: Vec<String>,
 }
 
 impl Card {
@@ -38,6 +40,45 @@ impl Card {
             crate::types::Goal::Reverse => &self.front,
         }
     }
+
+    /// True if any open heading contains `needle` (already normalized).
+    pub fn under(&self, needle: &str) -> bool {
+        self.headings
+            .iter()
+            .any(|h| h.to_lowercase().contains(needle))
+    }
+}
+
+/// Lowercased heading text, with leading `#` stripped.
+pub fn normalize_section(s: &str) -> String {
+    s.trim().trim_start_matches('#').trim().to_lowercase()
+}
+
+/// Unique heading titles in file order.
+pub fn collect_headings(cards: &[Card]) -> Vec<String> {
+    let mut out = Vec::new();
+    for card in cards {
+        for h in &card.headings {
+            if !out.iter().any(|x| x == h) {
+                out.push(h.clone());
+            }
+        }
+    }
+    out
+}
+
+/// `# Food` / `## drinks` — not a commented-out card (`# 食::to eat`).
+fn parse_heading(raw: &str) -> Option<(usize, String)> {
+    let t = raw.trim();
+    if !t.starts_with('#') || split_card(t).is_some() {
+        return None;
+    }
+    let level = t.chars().take_while(|&c| c == '#').count();
+    let title = t.get(level..)?.trim();
+    if title.is_empty() {
+        return None;
+    }
+    Some((level, title.to_string()))
 }
 
 /// A non-fatal problem in a deck or log file, reported with its location.
@@ -86,6 +127,7 @@ impl Deck {
         let mut seen: HashMap<String, usize> = HashMap::new();
         let mut warnings = Vec::new();
         let mut in_fence = false;
+        let mut headings: Vec<String> = Vec::new();
 
         for (idx, raw) in text.lines().enumerate() {
             let line_no = idx + 1;
@@ -93,7 +135,15 @@ impl Deck {
                 in_fence = !in_fence;
                 continue;
             }
-            if in_fence || front_is_ignored(raw) {
+            if in_fence {
+                continue;
+            }
+            if let Some((level, title)) = parse_heading(raw) {
+                headings.truncate(level.saturating_sub(1));
+                headings.push(title);
+                continue;
+            }
+            if front_is_ignored(raw) {
                 continue;
             }
             let Some((front_raw, back_raw, reverse)) = split_card(raw) else {
@@ -134,6 +184,7 @@ impl Deck {
                 back,
                 reverse,
                 line: line_no,
+                headings: headings.clone(),
             });
         }
 
@@ -176,7 +227,8 @@ mod tests {
                 front: "食".into(),
                 back: "to eat".into(),
                 reverse: false,
-                line: 3
+                line: 3,
+                headings: vec!["heading".into()],
             }
         );
         assert_eq!(
@@ -185,7 +237,8 @@ mod tests {
                 front: "飲".into(),
                 back: "to drink".into(),
                 reverse: true,
-                line: 4
+                line: 4,
+                headings: vec!["heading".into()],
             }
         );
         assert!(d.warnings.is_empty());
@@ -233,5 +286,29 @@ mod tests {
         let d = parse("  e\u{301}  ::x\n");
         assert_eq!(d.cards[0].front, "é");
         assert!(d.has("é"));
+    }
+
+    #[test]
+    fn headings_nest_and_under_matches() {
+        let d = parse(
+            "loose::card\n# Cantonese\n## Food\n食::to eat\n## Drink\n飲::to drink\n# Spanish\nhola::hello\n# 食::commented\nstill::spanish\n",
+        );
+        assert!(d.cards[0].headings.is_empty());
+        assert_eq!(d.cards[1].headings, ["Cantonese", "Food"]);
+        assert_eq!(d.cards[2].headings, ["Cantonese", "Drink"]);
+        assert_eq!(d.cards[3].headings, ["Spanish"]);
+        assert_eq!(
+            d.cards[4].headings,
+            ["Spanish"],
+            "a commented-out card is not a heading"
+        );
+        let food = normalize_section("food");
+        assert!(d.cards[1].under(&food));
+        assert!(!d.cards[2].under(&food));
+        assert!(d.cards[1].under(&normalize_section("# Cantonese")));
+        assert_eq!(
+            collect_headings(&d.cards),
+            ["Cantonese", "Food", "Drink", "Spanish"]
+        );
     }
 }

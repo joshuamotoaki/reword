@@ -2,14 +2,14 @@
 
 use std::collections::BTreeSet;
 
-use super::{Ctx, progress_bar, summarize};
+use super::{Ctx, leech_json, leeches, progress_bar, summarize};
 use crate::clock::{Clock, days_between};
 use crate::error::Result;
 use crate::memory::Model;
 use crate::out;
 use crate::store::LoadedDeck;
 use crate::term::Style;
-use crate::text::{pad_right, plural};
+use crate::text::{self, pad_right, plural};
 use crate::viz;
 
 const FORECAST_DAYS: i32 = 14;
@@ -132,6 +132,7 @@ pub fn run(ctx: &Ctx, deck_args: &[String]) -> Result<i32> {
     let st = compute(&decks, &model, &ctx.clock);
     let summaries = summarize(&decks, &model, &ctx.clock, &settings, today);
     let new_eligible: usize = summaries.iter().map(|s| s.new_available).sum();
+    let worst = leeches(&decks);
     let retention = if st.retention_30d.1 > 0 {
         Some(st.retention_30d.0 as f64 / st.retention_30d.1 as f64)
     } else {
@@ -151,6 +152,7 @@ pub fn run(ctx: &Ctx, deck_args: &[String]) -> Result<i32> {
             "retention_30d": retention,
             "retention_30d_sample": st.retention_30d.1,
             "forecast": st.forecast,
+            "leeches": leech_json(&worst),
             "desired_retention": settings.desired_retention,
             "fsrs_parameters": { "source": if model.custom { "params.toml" } else { "default" }, "values": model.params },
         }));
@@ -237,6 +239,26 @@ pub fn run(ctx: &Ctx, deck_args: &[String]) -> Result<i32> {
         style.dim(&format!("{active} of the last {ACTIVITY_DAYS} days"))
     ));
     out::println("");
+
+    if !worst.is_empty() {
+        let multi = decks.len() > 1;
+        for (i, l) in worst.iter().enumerate() {
+            let name = if multi {
+                format!("{} {}", l.deck, l.prompt)
+            } else {
+                l.prompt.clone()
+            };
+            let head = if i == 0 { "Leeches" } else { "" };
+            out::println(&format!(
+                "{}{} · {} again in {}",
+                label(head),
+                text::truncate(&name, 28),
+                l.again,
+                l.reviews,
+            ));
+        }
+        out::println("");
+    }
 
     out::println(&format!(
         "{}{}",

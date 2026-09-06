@@ -5,6 +5,7 @@ use std::io::Write;
 use super::Ctx;
 use crate::cli::ReviewArgs;
 use crate::clock::{days_between, in_days_label};
+use crate::deck::{collect_headings, normalize_section};
 use crate::error::{Error, Result};
 use crate::history::{Row, RowKind};
 use crate::out;
@@ -18,11 +19,6 @@ use crate::types::{Goal, Mode};
 pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     let store = &ctx.store;
     store.require()?;
-    if !ctx.term.interactive {
-        return Err(Error::new(
-            "review needs an interactive terminal (stdin and stdout must be a TTY, without --no-input)",
-        ));
-    }
     let names = ctx.deck_names(&args.decks)?;
     if names.is_empty() {
         return Err(
@@ -31,6 +27,17 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     }
     let mut decks = store.load_all(&names)?;
     ctx.report_warnings(&decks);
+    if matches!(args.cards, Some(0)) {
+        return Err(Error::new("-n needs at least 1 card"));
+    }
+    if let Some(under) = &args.under {
+        apply_under(&mut decks, under)?;
+    }
+    if !ctx.term.interactive {
+        return Err(Error::new(
+            "review needs an interactive terminal (stdin and stdout must be a TTY, without --no-input)",
+        ));
+    }
     let mut settings = ctx.settings()?;
     if let Some(minutes) = args.minutes {
         settings.session_minutes = minutes.max(1);
@@ -70,11 +77,15 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         introduced,
         args.endless,
     );
-    let label = if args.decks.is_empty() && names.len() > 1 {
-        format!("all decks ({})", names.len())
+    let session_names: Vec<String> = decks.iter().map(|d| d.name().to_string()).collect();
+    let mut label = if args.decks.is_empty() && session_names.len() > 1 {
+        format!("all decks ({})", session_names.len())
     } else {
-        names.join(", ")
+        session_names.join(", ")
     };
+    if let Some(under) = &args.under {
+        label = format!("{label} · {under}");
+    }
 
     if plan.is_empty() {
         let style = ctx.term.out;
@@ -124,7 +135,12 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
             None => return Ok(0),
         },
     };
-    let minutes = settings.session_minutes;
+    let minutes = if args.cards.is_some() && args.minutes.is_none() {
+        None
+    } else {
+        Some(settings.session_minutes)
+    };
+    let cards = args.cards.filter(|&n| n > 0);
     let label = if args.endless {
         format!("{label} · endless")
     } else {
@@ -144,6 +160,7 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         session::Options {
             mode,
             minutes,
+            cards,
             endless: args.endless,
             label,
         },
@@ -183,6 +200,39 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         }
     }
     Ok(0)
+}
+
+fn apply_under(decks: &mut Vec<LoadedDeck>, under: &str) -> Result<()> {
+    let needle = normalize_section(under);
+    if needle.is_empty() {
+        return Err(
+            Error::new("--under needs a heading").hint("Example: reword review --under food")
+        );
+    }
+    let available = {
+        let mut out = Vec::new();
+        for d in decks.iter() {
+            for h in collect_headings(&d.deck.cards) {
+                if !out.iter().any(|x| x == &h) {
+                    out.push(h);
+                }
+            }
+        }
+        out
+    };
+    for d in decks.iter_mut() {
+        d.deck.cards.retain(|c| c.under(&needle));
+    }
+    decks.retain(|d| !d.deck.cards.is_empty());
+    if decks.is_empty() {
+        let hint = if available.is_empty() {
+            "Add a `# Food` heading above a group of cards.".into()
+        } else {
+            format!("Headings: {}", available.join(", "))
+        };
+        return Err(Error::new(format!("no cards under \"{under}\"")).hint(hint));
+    }
+    Ok(())
 }
 
 /// Ask for the mode. Enter always picks recall.

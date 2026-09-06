@@ -21,8 +21,11 @@ const NEW_EVERY: usize = 5;
 
 pub struct Options {
     pub mode: Mode,
-    pub minutes: u32,
-    /// No time budget; when the queue empties, start another round.
+    /// Time budget. `None` with a card limit means cards only.
+    pub minutes: Option<u32>,
+    /// Stop after this many grades or skips.
+    pub cards: Option<usize>,
+    /// No time or card budget; when the queue empties, start another round.
     pub endless: bool,
     /// Deck label for the header.
     pub label: String,
@@ -84,6 +87,14 @@ fn same(a: &Item, b: &Item) -> bool {
 /// `0:05`, `3:42`, `90:00`.
 fn clock_label(secs: u64) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+fn progress_total(done: usize, remaining: usize, card_limit: Option<usize>) -> usize {
+    let queued = done + remaining;
+    match card_limit {
+        Some(n) => queued.min(n.max(done)),
+        None => queued,
+    }
 }
 
 impl Queue {
@@ -189,6 +200,9 @@ struct Session<'a> {
     term: &'a Term,
     mode: Mode,
     minutes: u32,
+    timed: bool,
+    card_limit: Option<usize>,
+    card_step: usize,
     endless: bool,
     multi: bool,
     queue: Queue,
@@ -233,13 +247,16 @@ pub fn run(
         clock,
         term,
         mode: opts.mode,
-        minutes: opts.minutes,
+        minutes: opts.minutes.unwrap_or(0),
+        timed: opts.minutes.is_some(),
+        card_limit: opts.cards,
+        card_step: opts.cards.unwrap_or(0),
         endless: opts.endless,
         multi: decks.len() > 1,
         queue,
         pool,
         start: Instant::now(),
-        budget: Duration::from_secs(u64::from(opts.minutes) * 60),
+        budget: Duration::from_secs(u64::from(opts.minutes.unwrap_or(0)) * 60),
         done: Vec::new(),
         session_events: HashMap::new(),
         summary: Summary::default(),
@@ -252,7 +269,7 @@ pub fn run(
         let (item, origin, stage) = match pending.take() {
             Some(p) => p,
             None => {
-                if s.time_up()? {
+                if s.budget_up()? {
                     break;
                 }
                 match s.queue.pick() {
@@ -765,9 +782,16 @@ impl Session<'_> {
                 clock_label(self.start.elapsed().as_secs())
             );
         }
-        let total = done + self.queue.remaining();
-        let left = self.budget.saturating_sub(self.start.elapsed()).as_secs();
-        format!("{done}/{total} · {} left", clock_label(left))
+        let total = progress_total(done, self.queue.remaining(), self.card_limit);
+        let time = if self.timed {
+            format!(
+                "{} left",
+                clock_label(self.budget.saturating_sub(self.start.elapsed()).as_secs())
+            )
+        } else {
+            clock_label(self.start.elapsed().as_secs())
+        };
+        format!("{done}/{total} · {time}")
     }
 
     /// Re-queue the session's cards, weakest first, so `--endless` can loop.
@@ -790,34 +814,55 @@ impl Session<'_> {
         true
     }
 
-    fn time_up(&mut self) -> Result<bool> {
-        if self.endless || self.start.elapsed() < self.budget {
+    fn budget_up(&mut self) -> Result<bool> {
+        if self.endless {
+            return Ok(false);
+        }
+        let done = self.summary.reviews + self.summary.skipped;
+        let cards_hit = self.card_limit.is_some_and(|n| done >= n);
+        let time_hit = self.timed && self.start.elapsed() >= self.budget;
+        if !cards_hit && !time_hit {
             return Ok(false);
         }
         let remaining = self.queue.remaining();
         if remaining == 0 {
             return Ok(true);
         }
+        let headline = if time_hit {
+            format!("Time's up. {}", self.summary_line())
+        } else {
+            format!("{} done. {}", plural(done, "card"), self.summary_line())
+        };
+        let more = match (self.timed, self.card_step > 0) {
+            (true, false) => format!("{} more", plural(self.minutes as usize, "minute")),
+            (false, true) => format!("{} more", plural(self.card_step, "card")),
+            (true, true) => format!(
+                "{} / {} more",
+                plural(self.minutes as usize, "minute"),
+                plural(self.card_step, "card")
+            ),
+            (false, false) => return Ok(true),
+        };
         let style = self.term.out;
         let body = vec![
-            format!(
-                "{}{}",
-                " ".repeat(MARGIN),
-                style.bold(&format!("Time's up. {}", self.summary_line()))
-            ),
+            format!("{}{}", " ".repeat(MARGIN), style.bold(&headline)),
             String::new(),
             format!(
-                "{}{} remain. Continue for {} more?",
+                "{}{} remain. Continue for {more}?",
                 " ".repeat(MARGIN),
                 plural(remaining, "card"),
-                plural(self.minutes as usize, "minute")
             ),
         ];
         let footer = self.hints(&[("y", "continue"), ("any other key", "finish")], false);
         self.draw(&body, &footer, None);
         let key = self.await_key()?;
         if matches!(key, Key::Char('y') | Key::Char('Y')) {
-            self.budget += Duration::from_secs(u64::from(self.minutes) * 60);
+            if self.timed {
+                self.budget += Duration::from_secs(u64::from(self.minutes) * 60);
+            }
+            if let Some(lim) = self.card_limit {
+                self.card_limit = Some(lim + self.card_step);
+            }
             Ok(false)
         } else {
             Ok(true)
@@ -968,5 +1013,13 @@ mod tests {
         assert_eq!(clock_label(5), "0:05");
         assert_eq!(clock_label(75), "1:15");
         assert_eq!(clock_label(3600), "60:00");
+    }
+
+    #[test]
+    fn card_limit_caps_the_progress_total() {
+        assert_eq!(progress_total(0, 50, Some(20)), 20);
+        assert_eq!(progress_total(0, 8, Some(20)), 8);
+        assert_eq!(progress_total(12, 10, Some(20)), 20);
+        assert_eq!(progress_total(12, 10, None), 22);
     }
 }

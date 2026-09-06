@@ -11,6 +11,8 @@ Examples:
   reword add cantonese 食 'to eat'   append a card
   reword review                     review every deck for the configured minutes
   reword review cantonese -m 5      one deck, five minutes
+  reword review -n 20               twenty cards, no time limit
+  reword review cantonese --under food
   reword review --typed --no-new    typed answers, no new cards
   reword edit cantonese             open the deck in $EDITOR
 
@@ -100,8 +102,16 @@ pub struct ReviewArgs {
     pub recall: bool,
 
     /// Time budget in minutes
-    #[arg(short, long, value_name = "N")]
+    #[arg(short = 'm', long, value_name = "N")]
     pub minutes: Option<u32>,
+
+    /// Stop after this many cards (graded or skipped)
+    #[arg(short = 'n', long, value_name = "N")]
+    pub cards: Option<usize>,
+
+    /// Only cards under this Markdown heading
+    #[arg(long, value_name = "HEADING")]
+    pub under: Option<String>,
 
     /// New cards to introduce this session, ignoring the daily cap
     #[arg(long, value_name = "N", conflicts_with = "no_new")]
@@ -113,7 +123,7 @@ pub struct ReviewArgs {
 
     /// Keep going until you quit: no time limit, no daily cap on new
     /// cards, and once nothing is due, the cards closest to being forgotten
-    #[arg(long, conflicts_with = "minutes")]
+    #[arg(long, conflicts_with_all = ["minutes", "cards"])]
     pub endless: bool,
 }
 

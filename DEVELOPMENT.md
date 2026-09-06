@@ -63,11 +63,13 @@ src/
   cli.rs       clap definitions; `reword` alone prints status
   commands/    one file per subcommand
   store.rs     the data directory: finding it, listing decks and logs
-  deck.rs      deck parser (`::` / `:::`, headings and fences ignored)
+  deck.rs      deck parser (`::` / `:::`, headings and fences ignored;
+               ATX headings are stacked on each card for `--under`)
   history.rs   append-only logs and replay into per-card histories
   memory.rs    FSRS-6 state derived from replayed history
   planner.rs   what is due, what is new, how much fits in the time budget
-  session.rs   the review loop: reveal, grade, undo, requeue, time budget
+  session.rs   the review loop: reveal, grade, undo, requeue, time or
+               card budget (`-n`)
   term.rs      TTY detection, colors, single-key reads, line prompts, the
                review Screen (alternate screen, fixed rows, footer keymap)
   text.rs      Unicode-aware keys, typed-answer matching, log escaping
@@ -108,6 +110,15 @@ src/
   The session has no budget. When the queue empties, the same cards are
   re-queued by current retrievability (unlearned leftovers as new) and
   the loop continues until `q`.
+- **Card-count sessions** (`-n 20`) stop after that many grades or skips.
+  Minutes stay the default; `-n` alone drops the time budget. `-m` and
+  `-n` together end at whichever limit hits first. Continue extends the
+  limit that was in force.
+- **`--under HEADING`** keeps cards whose open ATX heading stack contains
+  that text (case-insensitive substring). `# 食::to eat` is a commented
+  card, not a heading. Nested `##` headings inherit the parent.
+- **Leeches** on `reword` and `stats` are the five cards still in a deck
+  with the most Again grades, and at least three. Orphans do not count.
 - **Typed answers** are read as a cooked line so IME composition works. Raw
   mode is only for single-key prompts.
 - **The review screen** redraws a whole frame per state on the alternate

@@ -123,6 +123,25 @@ pub fn wrap(s: &str, cells: usize) -> Vec<String> {
     lines
 }
 
+/// Cut to at most `cells` display cells, ending with `…` if cut.
+pub fn truncate(s: &str, cells: usize) -> String {
+    if width(s) <= cells {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    let mut w = 0;
+    for ch in s.chars() {
+        let cw = width(&ch.to_string());
+        if w + cw > cells.saturating_sub(1) {
+            break;
+        }
+        out.push(ch);
+        w += cw;
+    }
+    out.push('…');
+    out
+}
+
 /// Pad on the right to `cells` display cells.
 pub fn pad_right(s: &str, cells: usize) -> String {
     let w = width(s);

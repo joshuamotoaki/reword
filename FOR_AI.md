@@ -17,7 +17,7 @@ front:::back
 - A line splits on the first `:::`, otherwise the first `::`. So `Vec::new():::constructor` is a two-way card whose front is `Vec::new()`.
 - Cards are a single line. No newlines inside a front or back.
 
-Headings, prose, and blank lines are ignored. Lines starting with `#` and fenced ` ``` ` blocks are never cards, so `# 食::to eat` comments a card out.
+Headings, prose, and blank lines are ignored as cards. `#` headings group cards (`reword review --under food` matches a heading whose title contains `food`, including parents). Lines starting with `#` that are also card lines (`# 食::to eat`) comment a card out and are not headings. Fenced ` ``` ` blocks are never cards.
 
 ```
 # Cantonese, food

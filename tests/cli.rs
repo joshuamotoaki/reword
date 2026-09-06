@@ -209,6 +209,21 @@ fn review_refuses_without_a_terminal_and_reports_nothing_due() {
     let o = reword(&dir, &["review"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("interactive terminal"));
+    std::fs::write(
+        dir.join("decks/example.md"),
+        "# Food\n食::to eat\n# Drink\n飲::to drink\n",
+    )
+    .unwrap();
+    let o = reword(&dir, &["review", "--under", "travel"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("no cards under \"travel\""));
+    assert!(stderr(&o).contains("Food"));
+    let o = reword(&dir, &["review", "--under", "food"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("interactive terminal"));
+    let o = reword(&dir, &["review", "-n", "0"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("-n needs at least 1 card"));
     let o = reword(&dir, &["stats", "nope"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("no deck named \"nope\""));
@@ -252,7 +267,10 @@ fn completions_and_help_work() {
     assert!(stdout(&o).contains("_reword"));
     let o = reword(&dir, &["help", "review"]);
     assert!(o.status.success());
-    assert!(stdout(&o).contains("--typed"));
+    let help = stdout(&o);
+    assert!(help.contains("--typed"));
+    assert!(help.contains("--under"));
+    assert!(help.contains("-n"));
     let o = reword(&dir, &["--version"]);
     assert!(stdout(&o).starts_with("reword "));
 }

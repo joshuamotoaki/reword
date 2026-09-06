@@ -44,7 +44,9 @@ reword add cantonese 飲 'to drink' -r  # -r: also ask back → front
 reword review                        # start a session
 ```
 
-`reword` on its own shows what is due and what to do next.
+`reword` on its own shows what is due and what to do next. Cards you keep
+failing (Again at least three times) show up there and on `reword stats`
+as leeches — the worst five.
 
 ## Deck files
 
@@ -67,6 +69,9 @@ Obsidian spaced-repetition convention:
 - Spaces around `::` do not matter. Fronts are compared after trimming and
   Unicode normalization.
 - A line splits on the first `:::` if it has one, otherwise the first `::`.
+- `#` headings group cards. `reword review cantonese --under food` reviews
+  only cards under a heading whose title contains `food` (nested headings
+  count: everything under `# Cantonese` / `## Food` matches both).
 
 To have an AI write or edit a deck, paste [FOR_AI.md](FOR_AI.md).
 
@@ -114,10 +119,11 @@ same place, and the keys you can press are always on the bottom row. When
 the session ends the terminal comes back as it was, with a one-line
 summary.
 
-Sessions are bounded by time, not by a due count. `-m 5` gives you five
-minutes; the header shows `m:ss` left and ticks every second. When time
-is up you get a summary and one question, continue or not. What is left
-simply stays due.
+Sessions are bounded by time by default. `-m 5` gives you five minutes;
+the header shows `m:ss` left and ticks every second. `-n 20` stops after
+twenty cards (grades or skips) instead, with the clock counting up. Both
+flags together end at whichever hits first. When the budget is up you get
+a summary and one question, continue or not. What is left simply stays due.
 
 `--endless` is for the days you want to keep going. No time limit, no daily
 cap on new cards, and once nothing is due it moves on to the learned cards
@@ -196,8 +202,8 @@ Flags beat the config file. `NO_COLOR` and `--no-color` disable color.
 ```
 reword                       status and next step
 reword init                  create ~/reword
-reword review [DECK...]      start a session (--recall | --typed, -m N | --endless,
-                             --new N | --no-new)
+reword review [DECK...]      start a session (--recall | --typed, -m N | -n N,
+                             --endless, --under HEADING, --new N | --no-new)
 reword add [DECK] FRONT BACK append a card (-r for both directions)
 reword edit [DECK]           open the deck in $EDITOR, then check it
 reword decks                 decks with card, learned, due, new counts
