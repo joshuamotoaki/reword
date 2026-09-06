@@ -62,42 +62,64 @@ Do not publish to crates.io: the name `reword` is taken. The Cargo package
 is `reword-cli`; the binary is `reword`. Users install via Homebrew or
 `cargo install --path .` from a clone.
 
+The git tag and `version` in `Cargo.toml` must be the same number.
+`v0.1.1` on a tree that still says `0.1.0` fails with "doesn't have
+anything for dist to Release" and a hint like `--tag=v0.1.0 will
+Announce: reword-cli`.
+
 ### Cut a version
 
-1. Bump `version` in `Cargo.toml` (semver). Refresh the lockfile so it
-   matches:
+1. Set `version` in `Cargo.toml` to the version you are shipping
+   (semver). `Cargo.lock` records it too, so refresh and test:
 
    ```bash
+   # in Cargo.toml: version = "0.1.1"
    cargo test
    ```
 
-2. Commit the bump (and anything else going out):
+   Confirm both files agree:
+
+   ```bash
+   grep '^version' Cargo.toml
+   grep -A1 'name = "reword-cli"' Cargo.lock
+   ```
+
+2. Commit the bump (and anything else going out) **before** tagging.
+   The tag is attached to a commit; if that commit still has the old
+   version, the workflow will fail.
 
    ```bash
    git add Cargo.toml Cargo.lock
-   git commit -m "Release 0.2.0"
+   git commit -m "Release 0.1.1"
    ```
 
-3. Tag the same commit. The tag must contain the Cargo version
-   (`v0.2.0`, or `0.2.0`). `v` prefix is the usual style here.
+3. Tag **that** commit with the same version. `v` prefix is the usual
+   style: `v0.1.1` for Cargo `0.1.1`.
 
    ```bash
-   git tag v0.2.0
+   git tag v0.1.1
    ```
 
-4. Push the commit and the tag. Pushing the tag is what starts the
-   Release workflow.
+   If `dist` is installed, check the tag against this tree before
+   pushing (this is the same check CI runs):
+
+   ```bash
+   dist plan --tag=v0.1.1
+   ```
+
+4. Push the commit first, then the tag. Pushing the tag starts the
+   Release workflow; the tagged commit must already be on the remote.
 
    ```bash
    git push
-   git push origin v0.2.0
+   git push origin v0.1.1
    ```
 
 5. Watch [Actions](https://github.com/joshuamotoaki/reword/actions) until
    Release finishes. That run:
 
    - Builds `aarch64` and `x86_64` for macOS and Linux
-   - Creates a GitHub release at `v0.2.0` with tarballs and a shell installer
+   - Creates a GitHub release at `v0.1.1` with tarballs and a shell installer
    - Commits an updated `reword` formula to
      [joshuamotoaki/homebrew-tap](https://github.com/joshuamotoaki/homebrew-tap)
 
@@ -106,21 +128,26 @@ is `reword-cli`; the binary is `reword`. Users install via Homebrew or
    will not see the new version.
 
 Optional: add a top-level `CHANGELOG.md` (or `RELEASES.md`) with a heading
-that contains the version, e.g. `# 0.2.0`. dist copies that section into
+that contains the version, e.g. `# 0.1.1`. dist copies that section into
 the GitHub release notes. With no changelog it generates a generic
 announcement.
 
-Preview what the next tag would produce (needs
-[`dist`](https://opensource.axo.dev/cargo-dist/) installed):
+### If the tag was wrong
+
+Delete it locally and on GitHub, then start over from step 1 on a new
+commit that has the matching `Cargo.toml` version. A tag cannot be
+moved; it has to be recreated.
 
 ```bash
-dist plan
+git tag -d v0.1.1
+git push origin :refs/tags/v0.1.1
 ```
 
 ### Prereleases
 
-A tag with a prerelease suffix (`v0.2.0-alpha.1`) still builds and creates
-a GitHub prerelease. The Homebrew formula is **not** updated.
+A tag with a prerelease suffix (`v0.1.1-alpha.1`) still builds and creates
+a GitHub prerelease. The Homebrew formula is **not** updated. The suffix
+must also be in `Cargo.toml` (`version = "0.1.1-alpha.1"`).
 
 ### After changing dist config
 
