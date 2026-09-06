@@ -1,6 +1,6 @@
 # From the repository root: cargo build
-# Then: PATH="$PWD/target/debug:$PATH" vhs docs/demo/demo.tape
-Output docs/demo/demo.gif
+# Then: PATH="$PWD/target/debug:$PATH" vhs assets/demo/demo.tape
+Output assets/demo/demo.gif
 
 Require bash
 Require reword
@@ -22,7 +22,7 @@ Set TypingSpeed 45ms
 Set Theme {"name":"Reword Light","background":"#faf9f6","foreground":"#253247","black":"#253247","red":"#b64242","green":"#397351","yellow":"#956514","blue":"#3268ae","magenta":"#7a559b","cyan":"#236c88","white":"#e5e8ed","brightBlack":"#647084","brightRed":"#b64242","brightGreen":"#397351","brightYellow":"#956514","brightBlue":"#3268ae","brightMagenta":"#7a559b","brightCyan":"#236c88","brightWhite":"#faf9f6"}
 
 Hide
-Type@1ms "source docs/demo/setup.sh"
+Type@1ms "source assets/demo/setup.sh"
 Enter
 Sleep 500ms
 Show

@@ -5,7 +5,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/joshuamotoaki/reword)](https://github.com/joshuamotoaki/reword/releases)
 [![FSRS-6](https://img.shields.io/badge/scheduler-FSRS--6-6f42c1)](https://github.com/open-spaced-repetition/fsrs4anki)
 
-![Reword demo: a plain-text Cantonese deck, space to reveal and grade 食 (to eat), typing the answer to 飲 (to drink), and the learned cards scheduled for later.](docs/demo/demo.gif)
+![Reword demo: a plain-text Cantonese deck, space to reveal and grade 食 (to eat), typing the answer to 飲 (to drink), and the learned cards scheduled for later.](assets/demo/demo.gif)
 
 I wanted a super simple flashcard app I could use to learn languages.
 No frills.

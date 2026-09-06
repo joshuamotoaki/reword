@@ -9,7 +9,7 @@ From the repository root:
 ```sh
 brew install vhs
 cargo build
-PATH="$PWD/target/debug:$PATH" vhs docs/demo/demo.tape
+PATH="$PWD/target/debug:$PATH" vhs assets/demo/demo.tape
 ```
 
 VHS needs `ffmpeg`, `ttyd`, and a browser runtime (see its installation
