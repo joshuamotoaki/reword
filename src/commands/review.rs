@@ -119,7 +119,7 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         (true, _, _) => Mode::Typed,
         (_, true, _) => Mode::Recall,
         (_, _, Some(m)) => m,
-        _ => match ask_mode(&decks)? {
+        _ => match ask_mode()? {
             Some(m) => m,
             None => return Ok(0),
         },
@@ -185,25 +185,15 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
     Ok(0)
 }
 
-/// Ask for the mode, defaulting to whatever the last session used.
-fn ask_mode(decks: &[LoadedDeck]) -> Result<Option<Mode>> {
-    let last = decks
-        .iter()
-        .filter_map(|d| d.ledger.last_activity.map(|t| (t, d.ledger.last_mode)))
-        .max_by_key(|(t, _)| *t)
-        .and_then(|(_, m)| m);
-    let suffix = match last {
-        Some(m) => format!(" (enter = {m})"),
-        None => String::new(),
-    };
-    print!("Mode: [r]ecall or [t]yped?{suffix} ");
+/// Ask for the mode. Enter always picks recall.
+fn ask_mode() -> Result<Option<Mode>> {
+    print!("Mode: [r]ecall or [t]yped? (enter = recall) ");
     let _ = std::io::stdout().flush();
     loop {
         let key = term::read_key()?;
         let chosen = match key {
-            Key::Char('r') | Key::Char('R') => Some(Mode::Recall),
+            Key::Char('r') | Key::Char('R') | Key::Enter | Key::Space => Some(Mode::Recall),
             Key::Char('t') | Key::Char('T') => Some(Mode::Typed),
-            Key::Enter | Key::Space if last.is_some() => last,
             Key::Char('q') | Key::Esc | Key::CtrlC | Key::CtrlD => {
                 term::clear_line();
                 return Ok(None);

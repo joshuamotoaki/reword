@@ -92,7 +92,8 @@ malformed log lines, orphaned histories, stray logs.
 
 A session is either **recall** or **typed**, chosen per session, never mixed.
 Both feed the same memory of each card. `reword review` asks which unless
-you pass `--recall` or `--typed` or set `mode` in the config.
+you pass `--recall` or `--typed` or set `mode` in the config. Enter
+picks recall.
 
 **Recall**: see the front, press space to reveal, press space for Good or
 `a` for Again. `h` and `e` (Hard, Easy) exist if you want them. Enter works

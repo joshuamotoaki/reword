@@ -235,7 +235,6 @@ pub struct Ledger {
     /// Time of the most recent review or skip. Rename and undo rows are
     /// bookkeeping, not study, and do not count.
     pub last_activity: Option<Timestamp>,
-    pub last_mode: Option<Mode>,
 }
 
 impl Ledger {
@@ -247,7 +246,6 @@ impl Ledger {
 
         let mut entries: HashMap<(String, Goal), Vec<Entry>> = HashMap::new();
         let mut last_activity = None;
-        let mut last_mode = None;
         for row in &rows {
             match &row.kind {
                 RowKind::Review {
@@ -258,7 +256,6 @@ impl Ledger {
                     ..
                 } => {
                     last_activity = Some(row.ts);
-                    last_mode = Some(*mode);
                     entries
                         .entry((row.front.clone(), *goal))
                         .or_default()
@@ -269,9 +266,8 @@ impl Ledger {
                             elapsed_ms: *elapsed_ms,
                         }));
                 }
-                RowKind::Skip { goal, mode, .. } => {
+                RowKind::Skip { goal, .. } => {
                     last_activity = Some(row.ts);
-                    last_mode = Some(*mode);
                     entries
                         .entry((row.front.clone(), *goal))
                         .or_default()
@@ -310,7 +306,6 @@ impl Ledger {
         Ledger {
             reviews,
             last_activity,
-            last_mode,
         }
     }
 
@@ -502,7 +497,6 @@ mod tests {
         let ledger = Ledger::replay(&rows);
         let evs = ledger.reviews("x", Goal::Forward);
         assert_eq!(evs[0].grade, Grade::Good);
-        assert_eq!(ledger.last_mode, Some(Mode::Recall));
     }
 
     #[test]
