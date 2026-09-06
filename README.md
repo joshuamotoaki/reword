@@ -25,19 +25,13 @@ Homebrew (macOS and Linux):
 brew install joshuamotoaki/tap/reword
 ```
 
-Shell installer (prebuilt binary, no Rust needed):
+From source, with a [Rust toolchain](https://rustup.rs):
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/joshuamotoaki/reword/releases/latest/download/reword-cli-installer.sh | sh
+git clone https://github.com/joshuamotoaki/reword
+cd reword
+cargo install --path .
 ```
-
-From source with Cargo:
-
-```bash
-cargo install reword-cli
-```
-
-Or download a binary from the [releases page](https://github.com/joshuamotoaki/reword/releases) and put `reword` on your `PATH`.
 
 ## Quick start
 
@@ -206,6 +200,6 @@ cargo run -- --dir /tmp/reword-play init
 ```
 
 Rust 2024 edition. Scheduling by the [`fsrs`](https://crates.io/crates/fsrs)
-crate from Open Spaced Repetition. Design notes are in [PLAN.md](PLAN.md).
+crate from Open Spaced Repetition. Contributor notes are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 Apache-2.0 License
