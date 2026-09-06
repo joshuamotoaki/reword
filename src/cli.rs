@@ -110,6 +110,11 @@ pub struct ReviewArgs {
     /// No new cards this session
     #[arg(long)]
     pub no_new: bool,
+
+    /// Keep going: no time limit, no daily cap on new cards, and once
+    /// nothing is due, the cards closest to being forgotten
+    #[arg(long, conflicts_with = "minutes")]
+    pub endless: bool,
 }
 
 #[derive(Args, Debug)]

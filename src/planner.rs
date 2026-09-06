@@ -18,7 +18,8 @@ pub struct Item {
 
 #[derive(Debug)]
 pub struct Plan {
-    /// Due now, lowest retrievability first.
+    /// Due now, lowest retrievability first. With `ahead`, followed by
+    /// every other learned card, still lowest retrievability first.
     pub due: Vec<Item>,
     /// Eligible new cards in deck and line order.
     pub new: Vec<Item>,
@@ -40,6 +41,8 @@ pub enum NewPolicy {
     Daily,
     /// `--new N` / `--no-new`: exactly this many, no throttle.
     Explicit(usize),
+    /// `--endless`: every eligible new card, no cap, no throttle.
+    All,
 }
 
 impl Plan {
@@ -85,6 +88,9 @@ enum Candidate {
     New(Item),
 }
 
+/// `ahead` also queues learned cards that are not due yet, behind the due
+/// ones and ordered by how close they are to being forgotten.
+#[allow(clippy::too_many_arguments)]
 pub fn plan(
     decks: &[LoadedDeck],
     model: &Model,
@@ -93,6 +99,7 @@ pub fn plan(
     settings: &Settings,
     policy: NewPolicy,
     introduced_today_all: usize,
+    ahead: bool,
 ) -> Plan {
     let mut due = Vec::new();
     let mut new = Vec::new();
@@ -115,7 +122,7 @@ pub fn plan(
                     })),
                     Some(m) => {
                         learned += 1;
-                        if model.is_due(&m, today) {
+                        if ahead || model.is_due(&m, today) {
                             let r = model.retrievability(&m, today);
                             Some(Candidate::Due(Item {
                                 deck: di,
@@ -184,6 +191,7 @@ pub fn plan(
     let mut throttled = false;
     let new_limit = match policy {
         NewPolicy::Explicit(n) => n,
+        NewPolicy::All => usize::MAX,
         NewPolicy::Daily => {
             let base = (settings.new_per_day as usize).saturating_sub(introduced_today_all);
             let per_session =
@@ -261,6 +269,7 @@ mod tests {
             &settings,
             NewPolicy::Daily,
             0,
+            false,
         );
         assert_eq!(p.due.len(), 1);
         assert_eq!(p.due[0].goal, Goal::Forward);
@@ -281,6 +290,7 @@ mod tests {
             &settings,
             NewPolicy::Explicit(0),
             0,
+            false,
         );
         assert_eq!(p.new_limit, 0);
         assert_eq!(p.new_waiting(), 1);
@@ -293,6 +303,7 @@ mod tests {
             &settings,
             NewPolicy::Daily,
             10,
+            false,
         );
         assert_eq!(p.new_limit, 0, "daily cap reached");
     }
@@ -319,6 +330,7 @@ mod tests {
             &settings,
             NewPolicy::Daily,
             0,
+            false,
         );
         assert_eq!(p.due.len(), 2);
         assert_eq!(decks[0].deck.cards[p.due[0].card].front, "older");
@@ -355,6 +367,7 @@ mod tests {
             &settings,
             NewPolicy::Daily,
             0,
+            false,
         );
         assert!(p.throttled);
         assert_eq!(p.new_limit, 0);
@@ -366,9 +379,59 @@ mod tests {
             &settings,
             NewPolicy::Explicit(1),
             0,
+            false,
         );
         assert!(!p.throttled);
         assert_eq!(p.new_limit, 1);
+    }
+
+    #[test]
+    fn ahead_queues_unripe_cards_behind_due_ones_by_retrievability() {
+        let clock = Clock::utc();
+        let model = Model::new(None, 0.9).unwrap();
+        let settings = Settings::default();
+        let today: Date = "2026-09-06".parse().unwrap();
+        // old: reviewed long ago, due. fresh: two successes, last one
+        // yesterday, not due. older: one success yesterday, not due but
+        // weaker, so closer to forgetting.
+        let decks = vec![loaded(
+            "old::1\nfresh::2\nolder::3\nnew::4\n",
+            vec![
+                row("2026-01-01T10:00:00Z", "old", Goal::Forward, Grade::Good),
+                row("2026-09-01T10:00:00Z", "fresh", Goal::Forward, Grade::Good),
+                row("2026-09-05T10:00:00Z", "fresh", Goal::Forward, Grade::Good),
+                row("2026-09-05T10:00:00Z", "older", Goal::Forward, Grade::Good),
+            ],
+        )];
+        let p = plan(
+            &decks,
+            &model,
+            &clock,
+            today,
+            &settings,
+            NewPolicy::Daily,
+            0,
+            false,
+        );
+        assert_eq!(p.due.len(), 1);
+        let p = plan(
+            &decks,
+            &model,
+            &clock,
+            today,
+            &settings,
+            NewPolicy::All,
+            0,
+            true,
+        );
+        let order: Vec<&str> = p
+            .due
+            .iter()
+            .map(|i| decks[0].deck.cards[i.card].front.as_str())
+            .collect();
+        assert_eq!(order, ["old", "older", "fresh"]);
+        assert_eq!(p.new_limit, 1);
+        assert!(!p.throttled);
     }
 
     #[test]

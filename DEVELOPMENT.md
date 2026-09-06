@@ -99,6 +99,11 @@ src/
 - **New intake** is one per five reviews, capped by `new_per_day` across
   all decks, and pauses while the overdue backlog exceeds two sessions'
   worth. An explicit `--new N` bypasses the throttle.
+- **Endless sessions** (`--endless`) are the same planner with `ahead`
+  set: not-yet-due learned cards join the due list, all sorted by
+  retrievability, so due cards still come first and the rest follow in
+  most-at-risk order. New intake is uncapped but still paced one per five.
+  The session has no budget; it ends when the queue is empty or on `q`.
 - **Typed answers** are read as a cooked line so IME composition works. Raw
   mode is only for single-key prompts.
 - **The review screen** redraws a whole frame per state on the alternate

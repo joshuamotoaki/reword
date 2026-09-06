@@ -22,6 +22,8 @@ const NEW_EVERY: usize = 5;
 pub struct Options {
     pub mode: Mode,
     pub minutes: u32,
+    /// No time budget; the queue already holds everything.
+    pub endless: bool,
     /// Deck label for the header.
     pub label: String,
     /// One-line notes for the ticker at session start.
@@ -169,6 +171,7 @@ struct Session<'a> {
     term: &'a Term,
     mode: Mode,
     minutes: u32,
+    endless: bool,
     multi: bool,
     queue: Queue,
     start: Instant,
@@ -195,9 +198,11 @@ pub fn run(
     opts: Options,
 ) -> Result<Summary> {
     let mut notes = vec![{
-        let mut parts = vec![format!("{} due", plan.due.len())];
-        if plan.new_limit > 0 {
-            parts.push(format!("{} new", plan.new_limit));
+        let noun = if opts.endless { "learned" } else { "due" };
+        let mut parts = vec![format!("{} {noun}", plan.due.len())];
+        let new = plan.new_limit.min(plan.new.len());
+        if new > 0 {
+            parts.push(format!("{new} new"));
         }
         parts.join(", ")
     }];
@@ -223,6 +228,7 @@ pub fn run(
         term,
         mode: opts.mode,
         minutes: opts.minutes,
+        endless: opts.endless,
         multi: decks.len() > 1,
         queue,
         start: Instant::now(),
@@ -742,6 +748,10 @@ impl Session<'_> {
     /// rather than the count going backwards.
     fn progress(&self) -> String {
         let done = self.summary.reviews + self.summary.skipped;
+        if self.endless {
+            let mins = self.start.elapsed().as_secs() / 60;
+            return format!("{done} done · {mins} min");
+        }
         let total = done + self.queue.remaining();
         let left = self.budget.saturating_sub(self.start.elapsed());
         let mins = left.as_secs().div_ceil(60);
@@ -782,7 +792,7 @@ impl Session<'_> {
     }
 
     fn time_up(&mut self) -> Result<bool> {
-        if self.start.elapsed() < self.budget {
+        if self.endless || self.start.elapsed() < self.budget {
             return Ok(false);
         }
         let remaining = self.queue.remaining();

@@ -94,6 +94,7 @@ pub fn summarize(
                 settings,
                 NewPolicy::Explicit(usize::MAX),
                 0,
+                false,
             );
             DeckSummary {
                 name: d.name().to_string(),

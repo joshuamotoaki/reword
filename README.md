@@ -116,6 +116,13 @@ Sessions are bounded by time, not by a due count. `-m 5` gives you five
 minutes; when they are up you get a summary and one question, continue or
 not. What is left simply stays due.
 
+`--endless` is for the days you want to keep going. No time limit, no daily
+cap on new cards, and once nothing is due it moves on to the learned cards
+closest to being forgotten, most at risk first, with new cards still mixed
+in one per five. It stops when you quit or when it has shown you
+everything. Scheduling is unaffected: an early review is just a review with
+a shorter gap.
+
 ## Scheduling
 
 Reword uses FSRS-6, the algorithm Anki ships, with its default parameters
@@ -186,7 +193,8 @@ Flags beat the config file. `NO_COLOR` and `--no-color` disable color.
 ```
 reword                       status and next step
 reword init                  create ~/reword
-reword review [DECK...]      start a session (--recall | --typed, -m N, --new N | --no-new)
+reword review [DECK...]      start a session (--recall | --typed, -m N | --endless,
+                             --new N | --no-new)
 reword add [DECK] FRONT BACK append a card (-r for both directions)
 reword edit [DECK]           open the deck in $EDITOR, then check it
 reword decks                 decks with card, learned, due, new counts

@@ -55,11 +55,20 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         NewPolicy::Explicit(0)
     } else if let Some(n) = args.new {
         NewPolicy::Explicit(n)
+    } else if args.endless {
+        NewPolicy::All
     } else {
         NewPolicy::Daily
     };
     let plan = planner::plan(
-        &decks, &model, &ctx.clock, today, &settings, policy, introduced,
+        &decks,
+        &model,
+        &ctx.clock,
+        today,
+        &settings,
+        policy,
+        introduced,
+        args.endless,
     );
     let label = if args.decks.is_empty() && names.len() > 1 {
         format!("all decks ({})", names.len())
@@ -99,6 +108,9 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
                 style.bold("--new 5")
             ));
         }
+        if plan.learned > 0 {
+            msg.push_str(&format!(" {} keeps going anyway.", style.bold("--endless")));
+        }
         out::println(&msg);
         return Ok(0);
     }
@@ -113,6 +125,11 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         },
     };
     let minutes = settings.session_minutes;
+    let label = if args.endless {
+        format!("{label} · endless")
+    } else {
+        label
+    };
 
     let style = ctx.term.out;
     let mut notes = Vec::new();
@@ -138,6 +155,7 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         session::Options {
             mode,
             minutes,
+            endless: args.endless,
             label,
             notes,
         },
@@ -166,10 +184,13 @@ pub fn run(ctx: &Ctx, args: ReviewArgs) -> Result<i32> {
         ));
     } else if let Some((day, n)) = next_due {
         out::println(&format!(
-            "All caught up. {} {}.",
+            "All caught up. {} {}. {} keeps going.",
             cards_come_due(n),
-            in_days_label(days_between(today, day))
+            in_days_label(days_between(today, day)),
+            style.bold(&format!("reword review{deck_arg} --endless"))
         ));
+    } else if args.endless {
+        out::println("That was everything.");
     } else {
         out::println("All caught up.");
     }
