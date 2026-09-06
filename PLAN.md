@@ -3,6 +3,16 @@
 A no-frills, general-purpose flashcard CLI. Runs locally, stores everything as
 plain text, schedules with FSRS. Sync is your problem (git works).
 
+> **Status:** implemented. `README.md` is the user-facing reference; this file
+> is the design record. Where the implementation refined the plan:
+> lines starting with `#` and fenced code blocks are never cards (so a card
+> can be commented out); a typed-mode typo override is logged as a single
+> `good` row carrying the typed answer and an `override` marker, not as two
+> rows; rename detection looks for exactly one orphaned history and exactly
+> one unreviewed card *before the last reviewed line* (new cards are
+> introduced in line order, so an unseen card among seen ones is the
+> anomaly); `new_per_day` counts new cards across all decks, not per deck.
+
 This plan turns two inputs into concrete decisions: the spaced-repetition
 report (`spaced_repetition_language_vocabulary_report.md`) and the Command
 Line Interface Guidelines (clig.dev). Where the report says "test before
